@@ -64,7 +64,7 @@ class SimMIMTransform:
             model_patch_size = config.MODEL.SWIN.PATCH_SIZE
         elif config.MODEL.TYPE == 'vit':
             model_patch_size = config.MODEL.VIT.PATCH_SIZE
-        elif config.MODEL.TYPE == 'pvt_small':
+        elif config.MODEL.TYPE == 'pvt_small' or config.MODEL.TYPE == 'pvt_medium':
             model_patch_size = 4
         else:
             raise NotImplementedError

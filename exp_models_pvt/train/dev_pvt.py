@@ -39,7 +39,7 @@ args = parser.parse_args()
 config = get_config(args)
 config.defrost()
 config.DATA.IMG_SIZE = 192
-config.MODEL.TYPE = 'pvt_small'
+config.MODEL.TYPE = 'pvt_medium'
 print("Image Size %d, Model Type %s" % (config.DATA.IMG_SIZE, config.MODEL.TYPE))
 config.freeze()
 
