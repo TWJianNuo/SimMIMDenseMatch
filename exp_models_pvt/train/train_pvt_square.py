@@ -232,7 +232,7 @@ if __name__ == '__main__':
     _, config = parse_option()
     config.defrost()
     config.DATA.IMG_SIZE = 192
-    config.MODEL.TYPE = 'pvt_small'
+    config.MODEL.TYPE = 'pvt_medium'
     config.freeze()
 
     if config.AMP_OPT_LEVEL != "O0":
