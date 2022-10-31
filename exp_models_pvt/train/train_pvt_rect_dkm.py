@@ -228,6 +228,9 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
             vls4 = tensor2disp(F.interpolate(mask.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
             vls = np.concatenate([vls1, vls2, vls3, vls4], axis=0)
 
+            import PIL.Image as Image
+            Image.fromarray(vls).save('/home/shengjie/Desktop/1111.png')
+
             writer.add_image('visualization', (torch.from_numpy(vls).float() / 255).permute([2, 0, 1]), num_steps * epoch + idx)
 
 

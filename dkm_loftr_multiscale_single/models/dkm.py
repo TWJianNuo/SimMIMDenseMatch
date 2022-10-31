@@ -100,7 +100,6 @@ class Decoder(nn.Module):
 
     def forward(self, img, mask, f_pyramid):
         in_chans = 3.0
-        rgb_recon = torch.zeros_like(img)
 
         patch_sizeh = int(img.shape[2] / mask.shape[1])
         patch_sizew = int(img.shape[3] / mask.shape[2])
@@ -115,7 +114,7 @@ class Decoder(nn.Module):
             ins = int(new_scale)
             feature = f_pyramid[ins]
 
-            rgb_recon = self.conv_refiner[new_scale](feature) + rgb_recon.detach()
+            rgb_recon = self.conv_refiner[new_scale](feature)
             rgb_recons[ins] = rgb_recon
 
             loss_recon = F.l1_loss(img, rgb_recon, reduction='none')
