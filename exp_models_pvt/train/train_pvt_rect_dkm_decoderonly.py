@@ -30,7 +30,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from tools.tools import tensor2rgb, tensor2disp
-from dkm_loftr_multiscale_single.models.build_model import DKMv2
+from dkm_loftr_multiscale_encoderonly.models.build_model import DKMv2
 
 try:
     # noinspection PyUnresolvedReferences
