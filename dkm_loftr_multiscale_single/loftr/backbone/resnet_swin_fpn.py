@@ -94,7 +94,7 @@ class ResNetSwinFPN(nn.Module):
             patch_size=4,
             in_chans=3,
             embed_dims=[128, 320],
-            depths=[4, 18],
+            depths=[4, 8],
             num_heads=[2, 5],
             mlp_ratios=[8, 4],
             sr_ratios=[4, 2],
@@ -147,7 +147,7 @@ class ResNetSwinFPN(nn.Module):
         x2_out = x2_out.reshape(B, C, H, W)
 
         x3, (H, W) = self.encoder.blocks[4](x2, H, W)
-        for blk in self.encoder.blocks[5:22]:
+        for blk in self.encoder.blocks[5:12]:
             x3, (H, W) = blk(x3, H, W)
         x3 = self.encoder.norm(x3)
         x3_out = x3.transpose(1, 2)
