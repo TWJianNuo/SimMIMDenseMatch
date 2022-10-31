@@ -30,7 +30,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from tools.tools import tensor2rgb, tensor2disp
-from exp_models_pvt.simmim_rect import build_simmim
+from dkm_loftr_multiscale_single.models.build_model import DKMv2
 
 try:
     # noinspection PyUnresolvedReferences
@@ -76,7 +76,7 @@ def main(config):
     data_loader_train = build_loader_mega(config, logger)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
-    model = build_simmim(config)
+    model = DKMv2(config, version="outdoor", outputfeature='concatenated')
     model.cuda()
     logger.info(str(model))
 
@@ -144,10 +144,12 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
         img = img.cuda(non_blocking=True)
         mask = mask.cuda(non_blocking=True)
 
-        loss, x_rec = model(img, mask)
+        rgb_recons, losses, loss = model(img, mask)
 
         if writer is not None:
             writer.add_scalar('loss', loss, num_steps * epoch + idx)
+            for k in losses.keys():
+                writer.add_scalar('loss/{}'.format(str(k)), losses[k], num_steps * epoch + idx)
 
         if config.TRAIN.ACCUMULATION_STEPS > 1:
             loss = loss / config.TRAIN.ACCUMULATION_STEPS
@@ -183,6 +185,8 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
                     grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.TRAIN.CLIP_GRAD)
                 else:
                     grad_norm = get_grad_norm(model.parameters())
+
+
             optimizer.step()
             lr_scheduler.step_update(epoch * num_steps + idx)
 
@@ -209,16 +213,20 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
             img_vls = img * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
                 [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
                 [1, 3, 1, 1]).cuda().float()
-            rec_vls = x_rec * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
+            rec_vls8 = rgb_recons[8] * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
+                [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
+                [1, 3, 1, 1]).cuda().float()
+            rec_vls4 = rgb_recons[4] * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
                 [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
                 [1, 3, 1, 1]).cuda().float()
 
             b, _, h, w = img.shape
 
             vls1 = tensor2rgb(img_vls)
-            vls2 = tensor2rgb(rec_vls)
-            vls3 = tensor2disp(F.interpolate(mask.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
-            vls = np.concatenate([vls1, vls2, vls3], axis=0)
+            vls2 = tensor2rgb(rec_vls8)
+            vls3 = tensor2rgb(rec_vls4)
+            vls4 = tensor2disp(F.interpolate(mask.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
+            vls = np.concatenate([vls1, vls2, vls3, vls4], axis=0)
 
             writer.add_image('visualization', (torch.from_numpy(vls).float() / 255).permute([2, 0, 1]), num_steps * epoch + idx)
 
