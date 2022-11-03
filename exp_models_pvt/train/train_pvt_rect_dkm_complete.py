@@ -93,7 +93,8 @@ def main(config):
         flops = model_without_ddp.flops()
         logger.info(f"number of GFLOPs: {flops / 1e9}")
 
-    lr_scheduler = build_scheduler(config, optimizer, len(data_loader_train))
+    n_iter_per_epoch = 5000
+    lr_scheduler = build_scheduler(config, optimizer, n_iter_per_epoch)
 
     if config.TRAIN.AUTO_RESUME:
         resume_file = auto_resume_helper(config.OUTPUT, logger)
@@ -154,6 +155,7 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
             writer.add_scalar('loss', loss, num_steps * epoch + idx)
             for k in losses.keys():
                 writer.add_scalar('loss/{}'.format(str(k)), losses[k], num_steps * epoch + idx)
+            writer.add_scalar('lr', optimizer.param_groups[0]['lr'], num_steps * epoch + idx)
 
         if config.TRAIN.ACCUMULATION_STEPS > 1:
             loss = loss / config.TRAIN.ACCUMULATION_STEPS
@@ -260,6 +262,11 @@ if __name__ == '__main__':
     config.defrost()
     config.DATA.IMG_SIZE = (192, 256)
     config.MODEL.TYPE = 'pvt_medium'
+
+    config.TRAIN.EPOCHS = 100
+    config.TRAIN.WARMUP_EPOCHS = 10
+    config.TRAIN.LR_SCHEDULER.DECAY_EPOCHS = 0
+
     config.freeze()
 
     if config.AMP_OPT_LEVEL != "O0":
@@ -282,9 +289,9 @@ if __name__ == '__main__':
     cudnn.benchmark = True
 
     # linear scale the learning rate according to total batch size, may not be optimal
-    linear_scaled_lr = config.TRAIN.BASE_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-    linear_scaled_min_lr = config.TRAIN.MIN_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
+    linear_scaled_lr = config.TRAIN.BASE_LR * dist.get_world_size()
+    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * dist.get_world_size()
+    linear_scaled_min_lr = config.TRAIN.MIN_LR * dist.get_world_size()
     # gradient accumulation also need to scale the learning rate
     if config.TRAIN.ACCUMULATION_STEPS > 1:
         linear_scaled_lr = linear_scaled_lr * config.TRAIN.ACCUMULATION_STEPS
