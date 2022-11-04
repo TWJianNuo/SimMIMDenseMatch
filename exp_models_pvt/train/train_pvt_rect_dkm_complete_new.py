@@ -32,7 +32,7 @@ from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from tools.tools import tensor2rgb, tensor2disp
 from tools.distributed import WeightedDistributedSampler
 from dkm_loftr_PVT_noprj_new.models.build_model import DKMv2
-
+from data.data_simmim_mega_twoview import collate_fn
 try:
     # noinspection PyUnresolvedReferences
     from apex import amp
@@ -128,8 +128,13 @@ def main(config):
             mega_dataset,
             batch_size=config.DATA.BATCH_SIZE,
             sampler=mega_sampler,
-            num_workers=config.DATA.NUM_WORKERS
+            num_workers=config.DATA.NUM_WORKERS,
+            collate_fn=collate_fn,
+            pin_memory=True,
+            drop_last=True
             )
+        # dataloader = DataLoader(dataset, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,
+        #                         pin_memory=True, drop_last=True, collate_fn=collate_fn)
         mega_dataloader = iter(mega_dataloader)
         train_one_epoch(config, model, mega_dataloader, optimizer, epoch, lr_scheduler, writer)
         if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
