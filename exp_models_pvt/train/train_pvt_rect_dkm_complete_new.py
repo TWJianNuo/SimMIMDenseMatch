@@ -130,6 +130,7 @@ def main(config):
             sampler=mega_sampler,
             num_workers=config.DATA.NUM_WORKERS
             )
+        mega_dataloader = iter(mega_dataloader)
         train_one_epoch(config, model, mega_dataloader, optimizer, epoch, lr_scheduler, writer)
         if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
