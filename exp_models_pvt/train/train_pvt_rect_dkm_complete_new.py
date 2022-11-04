@@ -131,10 +131,11 @@ def main(config):
             num_workers=config.DATA.NUM_WORKERS
             )
         print(len(mega_dataset))
-        tmpiter = iter(mega_dataloader)
-        print("Set Iter")
-        data = next(tmpiter)
-        print("fectch Data")
+        mega_dataloader = iter(mega_dataloader)
+        data = next(mega_dataloader)
+        print("fectch Data successul")
+        data = next(mega_dataloader)
+        print("fectch Data successul")
         # data_loader_train.sampler.set_epoch(epoch)
 
         train_one_epoch(config, model, mega_dataloader, optimizer, epoch, lr_scheduler, writer)
@@ -157,7 +158,8 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
 
     start = time.time()
     end = time.time()
-    for idx, (img1, mask1, img2, mask2) in enumerate(data_loader):
+    for idx in range(num_steps):
+        img1, mask1, img2, mask2 = next(data_loader)
         img1 = img1.cuda(non_blocking=True)
         mask1 = mask1.cuda(non_blocking=True)
 
