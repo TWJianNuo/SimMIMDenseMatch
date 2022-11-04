@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from datasets.megadepth_pair import MegadepthBuilder
 from data.data_simmim_mega import SimMIMTransform
 from config import get_config
-from dkm_loftr_PVT_noprj.models.build_model import DKMv2
+from dkm_loftr_PVT_noprj_new.models.build_model import DKMv2
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 
