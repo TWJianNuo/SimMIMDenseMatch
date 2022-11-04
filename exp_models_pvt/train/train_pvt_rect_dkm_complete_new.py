@@ -130,7 +130,11 @@ def main(config):
             sampler=mega_sampler,
             num_workers=config.DATA.NUM_WORKERS
             )
-
+        print(len(mega_dataset))
+        tmpiter = iter(mega_dataloader)
+        print("Set Iter")
+        data = next(tmpiter)
+        print("fectch Data")
         # data_loader_train.sampler.set_epoch(epoch)
 
         train_one_epoch(config, model, mega_dataloader, optimizer, epoch, lr_scheduler, writer)
