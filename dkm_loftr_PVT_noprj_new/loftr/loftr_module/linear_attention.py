@@ -44,7 +44,7 @@ class LinearAttention(Module):
         KV = torch.einsum("nshd,nshv->nhdv", K, values)  # (S,D)' @ S,V
 
         K_sum = K.sum(dim=1)
-        assert K_sum.max() < 65000.0
+        # assert K_sum.max() < 65000.0
         if Q.dtype is torch.half:
             K_sum = K_sum.half()
 

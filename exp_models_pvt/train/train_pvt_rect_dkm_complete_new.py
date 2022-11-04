@@ -149,6 +149,7 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
         img2 = img2.cuda(non_blocking=True)
         mask2 = mask2.cuda(non_blocking=True)
 
+
         rgb1_recons, rgb2_recons, losses, loss = model(img1, mask1, img2, mask2)
 
         if writer is not None:
