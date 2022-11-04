@@ -45,10 +45,17 @@ class LinearAttention(Module):
 
         K_sum = K.sum(dim=1)
         # assert K_sum.max() < 65000.0
-        if Q.dtype is torch.half:
-            K_sum = K_sum.half()
 
-        Z = 1 / (torch.einsum("nlhd,nhd->nlh", Q, K_sum) + self.eps)
+        if K_sum.max() > 65000.0:
+            K_sum = K_sum / 100.0
+            K_sum = K_sum.type_as(Q)
+            Z = 1 / (torch.einsum("nlhd,nhd->nlh", Q, K_sum) * 100.0 + self.eps)
+            print("K_sum Re-Scaled to Avoid OverFlow on Half Precision")
+            print(Z.min().item(), Z.max().item(), K_sum.min().item(), K_sum.max().item())
+        else:
+            K_sum = K_sum.type_as(Q)
+            Z = 1 / (torch.einsum("nlhd,nhd->nlh", Q, K_sum) + self.eps)
+
         queried_values = torch.einsum("nlhd,nhdv,nlh->nlhv", Q, KV, Z) * v_length
 
         return queried_values.contiguous()
