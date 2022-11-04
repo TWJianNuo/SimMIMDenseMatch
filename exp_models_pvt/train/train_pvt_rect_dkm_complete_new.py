@@ -130,7 +130,7 @@ def main(config):
             sampler=mega_sampler,
             num_workers=config.DATA.NUM_WORKERS,
             collate_fn=collate_fn,
-            pin_memory=True,
+            pin_memory=False,
             drop_last=True
             )
         # dataloader = DataLoader(dataset, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,
