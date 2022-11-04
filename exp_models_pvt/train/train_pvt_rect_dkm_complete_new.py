@@ -30,6 +30,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from tools.tools import tensor2rgb, tensor2disp
+from tools.distributed import WeightedDistributedSampler
 from dkm_loftr_PVT_noprj_new.models.build_model import DKMv2
 
 try:
@@ -73,7 +74,7 @@ def parse_option():
 
 def main(config):
     # logger = None
-    data_loader_train = build_loader_mega(config, logger)
+    mega_dataset, mega_ws = build_loader_mega(config, logger)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     h, w = config.DATA.IMG_SIZE
@@ -120,9 +121,19 @@ def main(config):
     logger.info("Start training")
     start_time = time.time()
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
-        data_loader_train.sampler.set_epoch(epoch)
+        mega_sampler = WeightedDistributedSampler(
+            weights=mega_ws, dataset=mega_dataset, num_samples=config.DATA.BATCH_SIZE * (n_iter_per_epoch + 100), replacement=False, seed=epoch
+        )
+        mega_dataloader = torch.utils.data.DataLoader(
+            mega_dataset,
+            batch_size=config.DATA.BATCH_SIZE,
+            sampler=mega_sampler,
+            num_workers=config.DATA.NUM_WORKERS
+            )
 
-        train_one_epoch(config, model, data_loader_train, optimizer, epoch, lr_scheduler, writer)
+        # data_loader_train.sampler.set_epoch(epoch)
+
+        train_one_epoch(config, model, mega_dataloader, optimizer, epoch, lr_scheduler, writer)
         if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
 

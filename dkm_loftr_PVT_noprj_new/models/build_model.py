@@ -7,7 +7,7 @@ from dkm_loftr_PVT_noprj_new.loftr import LoFTR, default_cfg
 # The outdoor and indoor models share the same config.
 # You can change the default values like thr and coarse_match_type.
 
-def DKMv2(config_simmim, h, w, version="outdoor", outputfeature='concatenated', pvt_depth=8, **kwargs):
+def DKMv2(config_simmim, h, w, version="outdoor", outputfeature='concatenated', pvt_depth=4, **kwargs):
     if outputfeature == 'concatenated':
         concatenated_dim = 640
     elif outputfeature == 'fpn':

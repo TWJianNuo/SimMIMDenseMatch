@@ -115,8 +115,22 @@ def build_loader_mega(config, logger):
 
     logger.info(f'Build dataset: train images = {len(dataset)}')
 
-    sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
-    dataloader = DataLoader(dataset, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,
-                            pin_memory=True, drop_last=True, collate_fn=collate_fn)
-
-    return dataloader
+    mega_ws = mega.weight_scenes(dataset, alpha=0.75)
+    # mega_sampler = WeightedDistributedSampler(
+    #     weights=mega_ws, dataset=dataset, num_samples=int(args.batch_size * k), replacement=False, seed=n
+    # )
+    # mega_dataloader = iter(
+    #     torch.utils.data.DataLoader(
+    #         megadepth_train,
+    #         batch_size=int(args.batch_size),
+    #         sampler=mega_sampler,
+    #         num_workers=int(args.num_workers)
+    #     )
+    # )
+    #
+    # sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
+    # dataloader = DataLoader(dataset, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,
+    #                         pin_memory=True, drop_last=True, collate_fn=collate_fn)
+    #
+    # return dataloader
+    return dataset, mega_ws
