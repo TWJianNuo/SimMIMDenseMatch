@@ -19,7 +19,7 @@ from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.models.layers import DropPath, to_2tuple
 
 from torch.utils.data import ConcatDataset
-from datasets.megadepth import MegadepthBuilder
+from datasets.megadepth_pair import MegadepthBuilder
 
 class MaskGenerator:
     def __init__(self, input_size=192, mask_patch_size=32, model_patch_size=4, mask_ratio=0.6):
@@ -75,7 +75,6 @@ class SimMIMTransform:
             model_patch_size=model_patch_size,
             mask_ratio=config.DATA.MASK_RATIO,
         )
-        a = 1
 
     def __call__(self, img):
         img = self.transform_img(img)
@@ -115,6 +114,7 @@ def build_loader_mega(config, logger):
     dataset = ConcatDataset(megadepth_train1 + megadepth_train2)
 
     logger.info(f'Build dataset: train images = {len(dataset)}')
+
 
     sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
     dataloader = DataLoader(dataset, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,

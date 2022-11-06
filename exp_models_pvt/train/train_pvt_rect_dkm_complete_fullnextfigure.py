@@ -267,8 +267,6 @@ if __name__ == '__main__':
     config.TRAIN.WARMUP_EPOCHS = 10
     config.TRAIN.LR_SCHEDULER.DECAY_EPOCHS = 0
 
-    config.DATA.MASK_RATIO = 0.75
-
     config.freeze()
 
     if config.AMP_OPT_LEVEL != "O0":

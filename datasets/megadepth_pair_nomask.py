@@ -83,8 +83,11 @@ class MegadepthScene:
         img2_path = os.path.join(self.data_root, img2_path)
         img1 = self.load_im(img1_path)
         img1, mask1 = self.transform(img1)
-        img2 = self.load_im(img2_path)
-        img2, mask2 = self.transform(img2)
+        # img2 = self.load_im(img2_path)
+        # img2, mask2 = self.transform(img2)
+        # mask2 = mask2 * 0
+        img2 = copy.deepcopy(img1)
+        mask2 = copy.deepcopy(mask1) * 0
         return img1, mask1, img2, mask2
 
 
