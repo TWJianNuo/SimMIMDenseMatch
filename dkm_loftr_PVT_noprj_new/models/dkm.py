@@ -119,10 +119,11 @@ class Decoder(nn.Module):
             rgb_recons[ins] = rgb_recon
 
             loss_recon = F.l1_loss(img, rgb_recon, reduction='none')
-            loss = (loss_recon * mask).sum() / (mask.sum() + 1e-5) / in_chans
-            losses[new_scale] = loss
+            loss1 = (loss_recon * mask).sum() / (mask.sum() + 1e-5) / in_chans
+            loss2 = (loss_recon * (1 - mask)).sum() / ((1 - mask).sum() + 1e-5) / in_chans
+            losses[new_scale] = loss1 + loss2 * 0.05
 
-            totloss += loss
+            totloss += losses[new_scale]
         totloss = totloss / len(self.scales)
         return rgb_recons, losses, totloss
 
