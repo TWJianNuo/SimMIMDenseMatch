@@ -21,7 +21,7 @@ import torch.nn.functional as F
 from timm.utils import AverageMeter
 
 from config import get_config
-from data.data_simmim_mega_twoview import build_loader_mega
+
 from lr_scheduler import build_scheduler
 from optimizer import build_optimizer
 from logger import create_logger
@@ -30,7 +30,9 @@ from torch.utils.tensorboard import SummaryWriter
 
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from tools.tools import tensor2rgb, tensor2disp
-from dkm_loftr_PVT_noprj.models.build_model import DKMv2
+
+from dkm_loftr_PVT_noprj_simaug.models.build_model import DKMv2
+from data.data_simmim_mega_augsim import build_loader_mega
 
 try:
     # noinspection PyUnresolvedReferences
@@ -131,25 +133,28 @@ def main(config):
     logger.info('Training time {}'.format(total_time_str))
 
 
+def to_cuda(batch):
+    for key, value in batch.items():
+        if isinstance(value, torch.Tensor):
+            batch[key] = value.cuda(non_blocking=True)
+    return batch
+
+
 def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, writer):
     model.train()
     optimizer.zero_grad()
 
-    num_steps = len(data_loader)
+    num_steps = 5000
     batch_time = AverageMeter()
     loss_meter = AverageMeter()
     norm_meter = AverageMeter()
 
     start = time.time()
     end = time.time()
-    for idx, (img1, mask1, img2, mask2) in enumerate(data_loader):
-        img1 = img1.cuda(non_blocking=True)
-        mask1 = mask1.cuda(non_blocking=True)
-
-        img2 = img2.cuda(non_blocking=True)
-        mask2 = mask2.cuda(non_blocking=True)
-
-        rgb1_recons, rgb2_recons, losses, loss = model(img1, mask1, img2, mask2)
+    for idx, data in enumerate(data_loader):
+        data = to_cuda(data)
+        img1, img2, mask1, mask2 = data['image0_color'], data['image1_color'], data['mask0_'], data['mask1_']
+        rgb1_recons, rgb2_recons, losses, loss = model(data)
 
         if writer is not None:
             writer.add_scalar('loss', loss, num_steps * epoch + idx)
@@ -252,6 +257,8 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
 
             writer.add_image('visualization', (torch.from_numpy(vls).float() / 255).permute([2, 0, 1]), num_steps * epoch + idx)
 
+        if idx == num_steps:
+            break
 
     epoch_time = time.time() - start
     logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
@@ -266,6 +273,8 @@ if __name__ == '__main__':
     config.TRAIN.EPOCHS = 100
     config.TRAIN.WARMUP_EPOCHS = 10
     config.TRAIN.LR_SCHEDULER.DECAY_EPOCHS = 0
+
+    config.DATA.MASK_RATIO = 0.75
 
     config.freeze()
 

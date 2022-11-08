@@ -5,8 +5,7 @@ from PIL import Image
 
 import torch
 import torchvision.transforms.functional as tvf
-from torch.utils.data import Dataset, DataLoader, ConcatDataset
-from tools.tools import get_depth_tuple_transform_ops, get_tuple_transform_ops
+from torch.utils.data import ConcatDataset
 
 
 class MegadepthScene:
@@ -14,12 +13,7 @@ class MegadepthScene:
         self,
         data_root,
         scene_info,
-        ht=384,
-        wt=512,
         min_overlap=0.0,
-        shake_t=0,
-        rot_prob=0.0,
-        normalize=True,
         transform=None
     ) -> None:
         self.data_root = data_root
@@ -33,25 +27,11 @@ class MegadepthScene:
         self.pairs = self.pairs[threshold]
         self.overlaps = self.overlaps[threshold]
         if len(self.pairs) > 100000:
-            # np.random.seed(2022)
             pairinds = np.random.choice(
                 np.arange(0, len(self.pairs)), 100000, replace=False
             )
-            # print(pairinds[0:100], len(self.pairs))
             self.pairs = self.pairs[pairinds]
             self.overlaps = self.overlaps[pairinds]
-        # counts, bins = np.histogram(self.overlaps,20)
-        # print(counts)
-        self.im_transform_ops = get_tuple_transform_ops(
-            resize=(ht, wt), normalize=None
-        )
-        self.depth_transform_ops = get_depth_tuple_transform_ops(
-            resize=(ht, wt), normalize=False
-        )
-        self.wt, self.ht = wt, ht
-        self.shake_t = shake_t
-        self.rot_prob = rot_prob
-
         self.transform = transform
 
     def load_im(self, im_ref, crop=None):
@@ -78,17 +58,61 @@ class MegadepthScene:
         ], t
 
     def __getitem__(self, pair_idx):
-        img1_path, img2_path = self.image_paths[self.pairs[pair_idx][0]], self.image_paths[self.pairs[pair_idx][1]]
-        img1_path = os.path.join(self.data_root, img1_path)
-        img2_path = os.path.join(self.data_root, img2_path)
-        img1 = self.load_im(img1_path)
-        img1, mask1 = self.transform(img1)
-        # img2 = self.load_im(img2_path)
-        # img2, mask2 = self.transform(img2)
-        # mask2 = mask2 * 0
-        img2 = copy.deepcopy(img1)
-        mask2 = copy.deepcopy(mask1) * 0
-        return img1, mask1, img2, mask2
+        # read intrinsics of original size
+        idx1, idx2 = self.pairs[pair_idx]
+        K1 = torch.tensor(self.intrinsics[idx1].copy(), dtype=torch.float).reshape(3, 3)
+        K2 = torch.tensor(self.intrinsics[idx2].copy(), dtype=torch.float).reshape(3, 3)
+
+        # read and compute relative poses
+        T1 = self.poses[idx1]
+        T2 = self.poses[idx2]
+        T_1to2 = torch.tensor(np.matmul(T2, np.linalg.inv(T1)), dtype=torch.float)[
+            :4, :4
+        ]  # (4, 4)
+
+        # Load positive pair data
+        im1, im2 = self.image_paths[idx1], self.image_paths[idx2]
+        depth1, depth2 = self.depth_paths[idx1], self.depth_paths[idx2]
+        im_src_ref = os.path.join(self.data_root, im1)
+        im_pos_ref = os.path.join(self.data_root, im2)
+        depth_src_ref = os.path.join(self.data_root, depth1)
+        depth_pos_ref = os.path.join(self.data_root, depth2)
+        # return torch.randn((1000,1000))
+        im_src = self.load_im(im_src_ref)
+        im_pos = self.load_im(im_pos_ref)
+        depth_src = self.load_depth(depth_src_ref)
+        depth_pos = self.load_depth(depth_pos_ref)
+
+        # Recompute camera intrinsic matrix due to the resize
+        im_src, depth_src, K1, masksrc = self.transform(im_src, depth_src, K1)
+        im_pos, depth_pos, K2, maskpos = self.transform(im_pos, depth_pos, K2)
+
+        p = np.random.random()
+        if p < 0.1:
+            im_pos = copy.deepcopy(im_src)
+            depth_pos = copy.deepcopy(depth_src)
+            K2 = copy.deepcopy(K1)
+            maskpos = maskpos * 0
+            T_1to2 = T_1to2 @ torch.linalg.inv(T_1to2)
+
+        elif (p >= 0.1) and (p < 0.4):
+            maskpos = maskpos * 0
+
+        data_dict = {
+            "image0_color": im_src,
+            "mask0_": masksrc,
+            "image1_color": im_pos,
+            "mask1_": maskpos,
+            "depth0": depth_src,
+            "depth1": depth_pos,
+            "K0": K1,
+            "K1": K2,
+            "T_0to1": T_1to2,
+            "T_1to0": torch.linalg.inv(T_1to2),
+        }
+
+        return data_dict
+
 
 
 class MegadepthBuilder:
