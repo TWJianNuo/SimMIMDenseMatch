@@ -1,5 +1,4 @@
 from math import log
-from loguru import logger
 
 import torch
 from einops import repeat
@@ -90,7 +89,7 @@ def spvs_coarse(data):
 
     # 5. save coarse matches(gt) for training fine level
     if len(b_ids) == 0:
-        logger.warning(f"No groundtruth coarse match found for: {data['pair_names']}")
+        # logger.warning(f"No groundtruth coarse match found for: {data['pair_names']}")
         # this won't affect fine-level loss calculation
         b_ids = torch.tensor([0], device=device)
         i_ids = torch.tensor([0], device=device)
