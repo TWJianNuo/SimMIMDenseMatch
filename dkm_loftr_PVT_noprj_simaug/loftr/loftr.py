@@ -113,7 +113,7 @@ class LoFTR(nn.Module):
         conf_matrix_sprv = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
         data['conf_matrix_sprv'] = conf_matrix_sprv
 
-        loftr_loss = self.loftr_loss(data) * 0.01
+        loftr_loss = self.loftr_loss(data) * 0.002
 
         return f_q_pyramid, f_s_pyramid, loftr_loss
 
