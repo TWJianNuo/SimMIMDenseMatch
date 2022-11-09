@@ -107,13 +107,14 @@ class LoFTR(nn.Module):
                                                               feat_c1_fpn, feat_m1)
 
 
-        # Compute Supervision
-        sim_matrix = self.coarse_alignment(feat_c0, feat_c1)
-        spvs_coarse(data)
-        conf_matrix_sprv = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
-        data['conf_matrix_sprv'] = conf_matrix_sprv
-
-        loftr_loss = self.loftr_loss(data) * 0.002
+        # # Compute Supervision
+        # sim_matrix = self.coarse_alignment(feat_c0, feat_c1)
+        # spvs_coarse(data)
+        # conf_matrix_sprv = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
+        # data['conf_matrix_sprv'] = conf_matrix_sprv
+        #
+        # loftr_loss = self.loftr_loss(data) * 0.002
+        loftr_loss = 0
 
         return f_q_pyramid, f_s_pyramid, loftr_loss
 
