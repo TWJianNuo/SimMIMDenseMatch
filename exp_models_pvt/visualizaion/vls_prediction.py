@@ -50,7 +50,7 @@ config = get_config(args)
 config.defrost()
 config.DATA.IMG_SIZE = (192, 256)
 config.MODEL.TYPE = 'pvt_medium'
-# config.DATA.MASK_RATIO = 0.75
+config.DATA.MASK_RATIO = 0.75
 config.freeze()
 
 transform = SimMIMTransform(config)
@@ -71,15 +71,19 @@ dataloader = DataLoader(megadepth_train, 12, num_workers=0, pin_memory=True, dro
 
 model = DKMv2(config, version="outdoor", outputfeature='concatenated', h=config.DATA.IMG_SIZE[0], w=config.DATA.IMG_SIZE[1])
 model.cuda()
-model.eval()
+model.train()
 
 vls_root = '/media/shengjie/disk1/visualization/EMAwareFlow/dense_match/pretext'
 os.makedirs(vls_root, exist_ok=True)
 
 
-ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/mega_twoview_appendpvt/ckpt_epoch_90.pth'
+ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/mega_twoview_fix075/ckpt_epoch_45.pth'
 ckpt = torch.load(ckpt_path)
 model.load_state_dict(ckpt['model'], strict=True)
+
+# for p in model.parameters():
+#     assert (p.min() > -1e3)
+
 np.random.seed(2022)
 vls_idx = np.random.randint(0, len(megadepth_train), 1000)
 print(len(megadepth_train), vls_idx)
@@ -112,7 +116,7 @@ with torch.no_grad():
         img1vls = unnormrgb(img1)
         img2vls = unnormrgb(img2)
         img1vls = img1vls * (1 - mask1) + img1vls * mask1 * darkratio1
-        img2vls = img2vls * (1 - mask1) + img2vls * mask1 * darkratio1
+        img2vls = img2vls * (1 - mask2) + img2vls * mask2 * darkratio1
 
         img1vls = tensor2rgb(img1vls)
         img2vls = tensor2rgb(img2vls)

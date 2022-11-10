@@ -1,25 +1,14 @@
-import os
-import random
+import os, io
 from PIL import Image
-import cv2
 import h5py
 import numpy as np
 import torch
-from torch.utils.data import (
-    Dataset,
-    DataLoader,
-    ConcatDataset)
-
-import kornia.augmentation as K
 import os.path as osp
-from tools.tools import get_depth_tuple_transform_ops, get_tuple_transform_ops
-from MegaDepthLoFTR.dkm_loftr_multiscale_softmaxl_homol.utils.transforms import GeometricSequential
-
 from tqdm import tqdm
 
 class ScanNetScene:
-    def __init__(self, data_root, scene_info, ht = 384, wt = 512, min_overlap=0., shake_t = 0, rot_prob=0.) -> None:
-        self.scene_root = osp.join(data_root, "scans", "scans_train")
+    def __init__(self, data_root, scene_info, transform) -> None:
+        self.scene_root = osp.join(data_root, "scans")
         self.data_names = scene_info['name']
         self.overlaps = scene_info['score']
         # Only sample 10s
@@ -30,18 +19,15 @@ class ScanNetScene:
             pairinds = np.random.choice(np.arange(0,len(self.data_names)),10000,replace=False)
             self.data_names = self.data_names[pairinds]
             self.overlaps = self.overlaps[pairinds]
-        self.im_transform_ops = get_tuple_transform_ops(resize=(ht, wt), normalize=True)
-        self.depth_transform_ops = get_depth_tuple_transform_ops(resize=(ht, wt), normalize=False)
-        self.wt, self.ht = wt, ht
-        self.shake_t = shake_t
-        self.H_generator = GeometricSequential(K.RandomAffine(degrees=90, p=rot_prob))
+        self.transform = transform
 
     def load_im(self, im_ref, crop=None):
         im = Image.open(im_ref)
         return im
     
     def load_depth(self, depth_ref, crop=None):
-        depth = cv2.imread(str(depth_ref), cv2.IMREAD_UNCHANGED)
+        depth = Image.open(depth_ref)
+        depth = np.array(depth).astype(np.uint16)
         depth = depth / 1000
         depth = torch.from_numpy(depth).float()  # (h, w)
         return depth
@@ -66,7 +52,6 @@ class ScanNetScene:
         world2cam = np.linalg.inv(cam2world)
         return world2cam
 
-
     def read_scannet_intrinsic(self,path):
         """ Read ScanNet's intrinsic matrix and return the 3x3 matrix.
         """
@@ -78,62 +63,44 @@ class ScanNetScene:
         data_name = self.data_names[pair_idx]
         scene_name, scene_sub_name, stem_name_1, stem_name_2 = data_name
         scene_name = f'scene{scene_name:04d}_{scene_sub_name:02d}'
-        
-        # read the intrinsic of depthmap
-        K1 = K2 =  self.read_scannet_intrinsic(osp.join(self.scene_root,
-                       scene_name,
-                       'intrinsic', 'intrinsic_color.txt'))#the depth K is not the same, but doesnt really matter
-        # read and compute relative poses
-        T1 =  self.read_scannet_pose(osp.join(self.scene_root,
-                       scene_name,
-                       'pose', f'{stem_name_1}.txt'))
-        T2 =  self.read_scannet_pose(osp.join(self.scene_root,
-                       scene_name,
-                       'pose', f'{stem_name_2}.txt'))
-        T_1to2 = torch.tensor(np.matmul(T2, np.linalg.inv(T1)), dtype=torch.float)[:4, :4]  # (4, 4)
 
-        # Load positive pair data
-        im_src_ref = os.path.join(self.scene_root, scene_name, 'color', f'{stem_name_1}.jpg')
-        im_pos_ref = os.path.join(self.scene_root, scene_name, 'color', f'{stem_name_2}.jpg')
-        depth_src_ref = os.path.join(self.scene_root, scene_name, 'depth', f'{stem_name_1}.png')
-        depth_pos_ref = os.path.join(self.scene_root, scene_name, 'depth', f'{stem_name_2}.png')
+        h5pypath = os.path.join(self.scene_root, scene_name, '{}.hdf5'.format(scene_name))
+        # print(h5pypath)
+        with h5py.File(h5pypath, 'r') as hf:
+            # Load positive pair data
+            im_src_ref = io.BytesIO(np.array(hf['color'][f'{stem_name_1}.jpg']))
+            im_pos_ref = io.BytesIO(np.array(hf['color'][f'{stem_name_2}.jpg']))
 
-        im_src = self.load_im(im_src_ref)
-        im_pos = self.load_im(im_pos_ref)
-        depth_src = self.load_depth(depth_src_ref)
-        depth_pos = self.load_depth(depth_pos_ref)
+            im_src = self.load_im(im_src_ref)
+            im_pos = self.load_im(im_pos_ref)
 
-        # Recompute camera intrinsic matrix due to the resize
-        K1 = self.scale_intrinsic(K1, im_src.width, im_src.height)
-        K2 = self.scale_intrinsic(K2, im_pos.width, im_pos.height)
-        # Process images
-        im_src, im_pos = self.im_transform_ops((im_src, im_pos))
-        depth_src, depth_pos = self.depth_transform_ops((depth_src[None,None], depth_pos[None,None]))
+        img1 = im_src
+        img2 = im_pos
 
-        data_dict = {'query': im_src,
-                    'support': im_pos,
-                    'query_depth': depth_src[0,0],
-                    'support_depth': depth_pos[0,0],
-                    'K1': K1,
-                    'K2': K2,
-                    'T_1to2':T_1to2,
-                    }
-        return data_dict
+        img1, mask1 = self.transform(img1)
+        img2, mask2 = self.transform(img2)
+        return img1, mask1, img2, mask2
 
 
 class ScanNetBuilder:
-    def __init__(self, data_root = 'data/scannet') -> None:
+    def __init__(self, data_root='data/scannet', debug=False, progress_bar=False) -> None:
         self.data_root = data_root
         self.scene_info_root = os.path.join(data_root, 'scannet_indices')
         self.all_scenes = os.listdir(self.scene_info_root)
-        
-    def build_scenes(self, split = 'train', min_overlap=0., **kwargs):
+        self.debug = debug
+        self.progress_bar = progress_bar
+
+    def build_scenes(self, split='train', transform=None):
         # Note: split doesn't matter here as we always use same scannet_train scenes
         scene_names = self.all_scenes
+
+        if self.debug:
+            scene_names = scene_names[0:100]
+
         scenes = []
-        for scene_name in tqdm(scene_names):
-            scene_info = np.load(os.path.join(self.scene_info_root,scene_name), allow_pickle=True)
-            scenes.append(ScanNetScene(self.data_root, scene_info, min_overlap=min_overlap, **kwargs))
+        for scene_name in tqdm(scene_names, disable=not self.progress_bar):
+            scene_info = np.load(os.path.join(self.scene_info_root, scene_name), allow_pickle=True)
+            scenes.append(ScanNetScene(self.data_root, scene_info, transform=transform))
         return scenes
     
     def weight_scenes(self, concat_dataset, alpha=.5):
@@ -142,8 +109,3 @@ class ScanNetBuilder:
             ns.append(len(d))
         ws = torch.cat([torch.ones(n)/n**alpha for n in ns])
         return ws
-
-
-if __name__ == "__main__":
-    mega_test = ConcatDataset(ScanNetBuilder("data/scannet").build_scenes(split='train'))
-    mega_test[0]
