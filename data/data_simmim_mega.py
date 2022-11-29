@@ -20,6 +20,7 @@ from timm.models.layers import DropPath, to_2tuple
 
 from torch.utils.data import ConcatDataset
 from datasets.megadepth import MegadepthBuilder
+from datasets.imagenet import ImageNetDataset
 
 class MaskGenerator:
     def __init__(self, input_size=192, mask_patch_size=32, model_patch_size=4, mask_ratio=0.6):
@@ -119,5 +120,18 @@ def build_loader_mega(config, logger):
     sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
     dataloader = DataLoader(dataset, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,
                             pin_memory=True, drop_last=True, collate_fn=collate_fn)
+
+    return dataloader
+
+
+def build_loader_imagenet(config, logger, split, drop_last=True):
+    transform = SimMIMTransform(config)
+    logger.info(f'Pre-train data transform:\n{transform}')
+
+    imagenet = ImageNetDataset(data_root=config.DATA.DATA_PATH, split=split, transform=transform)
+    logger.info(f'Build dataset: train images = {len(imagenet)}')
+    sampler = DistributedSampler(imagenet, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
+    dataloader = DataLoader(imagenet, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,
+                            pin_memory=True, drop_last=drop_last, collate_fn=collate_fn)
 
     return dataloader

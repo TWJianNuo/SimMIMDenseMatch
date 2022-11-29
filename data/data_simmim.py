@@ -34,7 +34,9 @@ class MaskGenerator:
         self.token_count = self.rand_size ** 2
         self.mask_count = int(np.ceil(self.token_count * self.mask_ratio))
         
-    def __call__(self):
+    def __call__(self, idx=None):
+        if idx is not None:
+            np.random.seed(idx)
         mask_idx = np.random.permutation(self.token_count)[:self.mask_count]
         mask = np.zeros(self.token_count, dtype=int)
         mask[mask_idx] = 1
@@ -69,9 +71,9 @@ class SimMIMTransform:
             mask_ratio=config.DATA.MASK_RATIO,
         )
     
-    def __call__(self, img):
+    def __call__(self, img, idx=None):
         img = self.transform_img(img)
-        mask = self.mask_generator()
+        mask = self.mask_generator(idx)
         
         return img, mask
 
