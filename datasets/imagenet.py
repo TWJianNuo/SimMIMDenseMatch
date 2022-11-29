@@ -24,7 +24,7 @@ class ImageNetDataset:
 
         hd5files = glob.glob(os.path.join(data_root, split, '*.hdf5'))
         imgs = list()
-        for h5path in tqdm.tqdm(hd5files):
+        for h5path in tqdm.tqdm(hd5files, disable=(split=='val')):
             with h5py.File(h5path, 'r') as hf:
                 if split == 'val':
                     for x in tqdm.tqdm(hf.keys()):
@@ -35,7 +35,7 @@ class ImageNetDataset:
         self.imgs = imgs
         self.split = split
         if split == 'val':
-            self.imgs = self.imgs[::50]
+            self.imgs = self.imgs[::10]
 
     def load_im(self, im_ref):
         im = Image.open(im_ref)
@@ -48,7 +48,7 @@ class ImageNetDataset:
         if self.split == 'val':
             h5path = os.path.join(self.data_root, self.split, 'n00000000.hdf5')
         elif self.split == 'train':
-            h5path = os.path.join(self.data_root, self.split, self.imgs[idx].split('_')[0])
+            h5path = os.path.join(self.data_root, self.split, '{}.hdf5'.format(self.imgs[idx].split('_')[0]))
         with h5py.File(h5path, 'r') as hf:
             img = self.load_im(io.BytesIO(np.array(hf[self.imgs[idx]])))
 

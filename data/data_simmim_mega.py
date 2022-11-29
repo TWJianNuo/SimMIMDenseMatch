@@ -5,8 +5,6 @@
 # Written by Zhenda Xie
 # --------------------------------------------------------
 
-import math
-import random
 import numpy as np
 
 import torch
@@ -14,9 +12,8 @@ import torch.distributed as dist
 import torchvision.transforms as T
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.data._utils.collate import default_collate
-from torchvision.datasets import ImageFolder
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-from timm.models.layers import DropPath, to_2tuple
+from timm.models.layers import to_2tuple
 
 from torch.utils.data import ConcatDataset
 from datasets.megadepth import MegadepthBuilder
@@ -40,7 +37,9 @@ class MaskGenerator:
         self.token_count = self.rand_size_h * self.rand_size_w
         self.mask_count = int(np.ceil(self.token_count * self.mask_ratio))
 
-    def __call__(self):
+    def __call__(self, idx=None):
+        if idx is not None:
+            np.random.seed(idx)
         mask_idx = np.random.permutation(self.token_count)[:self.mask_count]
         mask = np.zeros(self.token_count, dtype=int)
         mask[mask_idx] = 1
@@ -76,11 +75,10 @@ class SimMIMTransform:
             model_patch_size=model_patch_size,
             mask_ratio=config.DATA.MASK_RATIO,
         )
-        a = 1
 
-    def __call__(self, img):
+    def __call__(self, img, idx=None):
         img = self.transform_img(img)
-        mask = self.mask_generator()
+        mask = self.mask_generator(idx)
 
         return img, mask
 
@@ -126,8 +124,6 @@ def build_loader_mega(config, logger):
 
 def build_loader_imagenet(config, logger, split, drop_last=True):
     transform = SimMIMTransform(config)
-    logger.info(f'Pre-train data transform:\n{transform}')
-
     imagenet = ImageNetDataset(data_root=config.DATA.DATA_PATH, split=split, transform=transform)
     logger.info(f'Build dataset: train images = {len(imagenet)}')
     sampler = DistributedSampler(imagenet, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)

@@ -94,7 +94,8 @@ def main(config):
         flops = model_without_ddp.flops()
         logger.info(f"number of GFLOPs: {flops / 1e9}")
 
-    lr_scheduler = build_scheduler(config, optimizer, len(data_loader_train))
+    n_iter_per_epoch = 5000
+    lr_scheduler = build_scheduler(config, optimizer, n_iter_per_epoch)
 
     if config.TRAIN.AUTO_RESUME:
         resume_file = auto_resume_helper(config.OUTPUT, logger)
@@ -121,12 +122,10 @@ def main(config):
     start_time = time.time()
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
         data_loader_train.sampler.set_epoch(epoch)
-        eval(model, len(data_loader_train) * (epoch + 1), writer)
-        eval(model, len(data_loader_train) * (epoch + 1), writer)
-        aaaa
         train_one_epoch(config, model, data_loader_train, optimizer, epoch, lr_scheduler, writer)
         if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
+        eval(model, n_iter_per_epoch * (epoch + 1), writer)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
@@ -166,7 +165,7 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
     model.train()
     optimizer.zero_grad()
 
-    num_steps = len(data_loader)
+    num_steps = 5000
     batch_time = AverageMeter()
     loss_meter = AverageMeter()
     norm_meter = AverageMeter()
@@ -181,6 +180,7 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
 
         if writer is not None:
             writer.add_scalar('loss', loss, num_steps * epoch + idx)
+            writer.add_scalar('lr', optimizer.param_groups[0]['lr'], num_steps * epoch + idx)
 
         if config.TRAIN.ACCUMULATION_STEPS > 1:
             loss = loss / config.TRAIN.ACCUMULATION_STEPS
@@ -255,6 +255,9 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
 
             writer.add_image('visualization', (torch.from_numpy(vls).float() / 255).permute([2, 0, 1]), num_steps * epoch + idx)
 
+        if idx == num_steps:
+            break
+
     epoch_time = time.time() - start
     logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
 
@@ -264,6 +267,7 @@ if __name__ == '__main__':
 
     config.defrost()
     config.DATA.IMG_SIZE = (160, 192)  # 192
+    config['DATA']['MASK_RATIO'] = 0.75
     config['MODEL']['SWIN']['PATCH_SIZE'] = 2
     config['MODEL']['VIT']['PATCH_SIZE'] = 2
     config.freeze()
@@ -288,9 +292,9 @@ if __name__ == '__main__':
     cudnn.benchmark = True
 
     # linear scale the learning rate according to total batch size, may not be optimal
-    linear_scaled_lr = config.TRAIN.BASE_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-    linear_scaled_min_lr = config.TRAIN.MIN_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
+    linear_scaled_lr = config.TRAIN.BASE_LR * dist.get_world_size()
+    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * dist.get_world_size()
+    linear_scaled_min_lr = config.TRAIN.MIN_LR * dist.get_world_size()
     # gradient accumulation also need to scale the learning rate
     if config.TRAIN.ACCUMULATION_STEPS > 1:
         linear_scaled_lr = linear_scaled_lr * config.TRAIN.ACCUMULATION_STEPS

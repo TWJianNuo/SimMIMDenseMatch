@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch.utils.data import ConcatDataset
 from torch.utils.data import DataLoader, DistributedSampler
 from datasets.imagenet import ImageNetDataset
-from data.data_simmim import SimMIMTransform
+from data.data_simmim_mega import SimMIMTransform
 from config import get_config
 from DKMResnetLoFTRPreTrainStandard.models.build_model import DKMv2
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
@@ -27,6 +27,7 @@ args = parser.parse_args()
 
 config = get_config(args)
 config.defrost()
+config['DATA']['MASK_RATIO'] = 0.75
 config['MODEL']['SWIN']['PATCH_SIZE'] = 2
 config['MODEL']['VIT']['PATCH_SIZE'] = 2
 config.freeze()
