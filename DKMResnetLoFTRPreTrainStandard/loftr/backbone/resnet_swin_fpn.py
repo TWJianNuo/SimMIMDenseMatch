@@ -1,14 +1,10 @@
-import copy
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from timm.models.layers import trunc_normal_
 from functools import partial
 from einops.einops import rearrange
 from .simmim_rect import SimMIMPVT
 from loguru import logger
-
-from torchvision.models import resnet as tv_resnet
 
 def conv1x1(in_planes, out_planes, stride=1):
     """1x1 convolution without padding"""
@@ -62,24 +58,24 @@ class ResNetSwinFPN(nn.Module):
         block_dims = config['block_dims']
         block_dims[2] = 320
 
-        self.prj3 = nn.Sequential(nn.Conv2d(in_channels=1024, out_channels=block_dims[2], kernel_size=1, padding=0))
+        # Class Variable
+        self.in_planes = initial_dim
 
-        # Init Networks
-        if config['pretrained_resnet']:
-            logger.info("Loaded from Pretrained ResNet50")
-        else:
-            logger.info("Loaded from Random ResNet50")
+        # Networks
+        self.conv1 = nn.Conv2d(3, initial_dim, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = nn.BatchNorm2d(initial_dim)
+        self.relu = nn.ReLU(inplace=True)
 
-        # encoder = tv_resnet.resnet50(pretrained=config['pretrained_resnet'])
-        encoder = tv_resnet.resnet50(pretrained=False)
+        self.layer1 = self._make_layer(block, block_dims[0], stride=1)  # 1/2
+        self.layer2 = self._make_layer(block, block_dims[1], stride=2)  # 1/4
+        self.layer3 = self._make_layer(block, block_dims[2], stride=2)  # 1/8
 
-        self.conv1 = encoder.conv1
-        self.bn1 = encoder.bn1
-        self.relu = encoder.relu
-
-        self.layer1 = encoder.layer1
-        self.layer2 = encoder.layer2
-        self.layer3 = encoder.layer3
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
 
         self.pvt_depth = config['pvt_depth']
         # Configurate PVT Transformer
@@ -95,15 +91,23 @@ class ResNetSwinFPN(nn.Module):
             norm_layer=partial(nn.LayerNorm, eps=1e-6)
         )
         self.encoder = encoder
-
         self.img_size = config['IMG_SIZE']
+
         logger.info("PVT_DEPTH: %d, IMGH: %d, IMGW: %d" % (self.pvt_depth, self.img_size[0], self.img_size[1]))
 
-        self.mask_token = nn.Parameter(torch.zeros(1, 1, 256))
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, 128))
         self._trunc_normal_(self.mask_token, std=.02)
 
     def _trunc_normal_(self, tensor, mean=0., std=1.):
         trunc_normal_(tensor, mean=mean, std=std, a=-std, b=std)
+
+    def _make_layer(self, block, dim, stride=1):
+        layer1 = block(self.in_planes, dim, stride=stride)
+        layer2 = block(dim, dim, stride=1)
+        layers = (layer1, layer2)
+
+        self.in_planes = dim
+        return nn.Sequential(*layers)
 
     def forward(self, x, mimmask):
         # ResNet Backbone
@@ -120,7 +124,6 @@ class ResNetSwinFPN(nn.Module):
 
         x2 = self.layer2(x1)
         x3 = self.layer3(x2)
-        x3 = self.prj3(x3)
 
         # add position embedding
         spawnh, spawnw = self.img_size

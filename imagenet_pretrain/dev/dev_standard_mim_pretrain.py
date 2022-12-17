@@ -40,6 +40,7 @@ model = DKMv2(pvt_depth=4, resolution='extrasmall')
 model.cuda()
 model.eval()
 
+torch.save(model.state_dict(), '/home/shengjie/Documents/supporting_projects/EMAwareFlow/checkpoints/MIMAug/model.ckpt')
 with torch.no_grad():
     for idx, (img, mask) in enumerate(dataloader):
         img = img.cuda(non_blocking=True)
