@@ -69,7 +69,7 @@ class SimMIMTransform:
             input_size=config.DATA.IMG_SIZE,
             mask_patch_size=config.DATA.MASK_PATCH_SIZE,
             model_patch_size=model_patch_size,
-            mask_ratio=config.DATA.MASK_RATIO,
+            mask_ratio=config.DATA.MASK_RATIO_SCANNET,
         )
 
     def __call__(self, img):

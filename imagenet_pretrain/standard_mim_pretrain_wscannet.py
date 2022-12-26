@@ -287,6 +287,7 @@ if __name__ == '__main__':
     config.defrost()
     config.DATA.IMG_SIZE = (160, 192)  # 192
     config['DATA']['MASK_RATIO'] = 0.75
+    config['DATA']['MASK_RATIO_SCANNET'] = 0.85
     config['DATA']['DATA_PATH_SCANNET'] = args.data_path_scannet
     config['DATA']['MINOVERLAP_SCANNET'] = args.minoverlap_scannet
     config['MODEL']['SWIN']['PATCH_SIZE'] = 2
