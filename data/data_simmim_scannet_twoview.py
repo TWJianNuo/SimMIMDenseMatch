@@ -98,13 +98,12 @@ def build_loader_scannet(config, logger):
     transform = SimMIMTransform(config)
     logger.info(f'Pre-train data transform:\n{transform}')
 
-    h, w = 384, 512
-
-    scannet = ScanNetBuilder(data_root=config.DATA.DATA_PATH, progress_bar=False)
+    scannet = ScanNetBuilder(data_root=config.DATA.DATA_PATH_SCANNET, progress_bar=False, minoverlap=config.DATA.MINOVERLAP_SCANNET, debug=False)
     scannet_train = scannet.build_scenes(split="train", transform=transform)
     dataset = ConcatDataset(scannet_train)
 
     logger.info(f'Build dataset: train images = {len(dataset)}')
+    logger.info(f'MIN OVERLAP = {config.DATA.MINOVERLAP_SCANNET}')
 
     sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
     dataloader = DataLoader(dataset, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,

@@ -11,8 +11,8 @@ class Wrapper(torch.nn.Module):
         # Misc
         self.loftr = loftr
 
-    def forward(self, x, mask):
-        return self.loftr(x, mask)
+    def forward(self, x, mask, x2=None):
+        return self.loftr(x, mask, x2)
 
 def DKMv2(resolution="extrasmall", pvt_depth=4):
     if resolution == "low":

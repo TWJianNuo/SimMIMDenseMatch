@@ -7,12 +7,13 @@ import os.path as osp
 from tqdm import tqdm
 
 class ScanNetScene:
-    def __init__(self, data_root, scene_info, transform) -> None:
+    def __init__(self, data_root, scene_info, transform, minoverlap=0.0) -> None:
         self.scene_root = osp.join(data_root, "scans")
         self.data_names = scene_info['name']
         self.overlaps = scene_info['score']
         # Only sample 10s
         valid = (self.data_names[:,-2:] % 10).sum(axis=-1) == 0
+        valid = valid * (self.overlaps > minoverlap)
         self.overlaps = self.overlaps[valid]
         self.data_names = self.data_names[valid]
         if len(self.data_names) > 10000:
@@ -83,12 +84,13 @@ class ScanNetScene:
 
 
 class ScanNetBuilder:
-    def __init__(self, data_root='data/scannet', debug=False, progress_bar=False) -> None:
+    def __init__(self, data_root='data/scannet', debug=False, progress_bar=False, minoverlap=0.0) -> None:
         self.data_root = data_root
         self.scene_info_root = os.path.join(data_root, 'scannet_indices')
         self.all_scenes = os.listdir(self.scene_info_root)
         self.debug = debug
         self.progress_bar = progress_bar
+        self.minoverlap = minoverlap
 
     def build_scenes(self, split='train', transform=None):
         # Note: split doesn't matter here as we always use same scannet_train scenes
@@ -100,7 +102,7 @@ class ScanNetBuilder:
         scenes = []
         for scene_name in tqdm(scene_names, disable=not self.progress_bar):
             scene_info = np.load(os.path.join(self.scene_info_root, scene_name), allow_pickle=True)
-            scenes.append(ScanNetScene(self.data_root, scene_info, transform=transform))
+            scenes.append(ScanNetScene(self.data_root, scene_info, transform=transform, minoverlap=self.minoverlap))
         return scenes
     
     def weight_scenes(self, concat_dataset, alpha=.5):
