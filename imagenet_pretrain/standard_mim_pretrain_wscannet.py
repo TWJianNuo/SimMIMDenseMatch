@@ -20,6 +20,8 @@ import torch.distributed as dist
 import torch.nn.functional as F
 
 from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data._utils.collate import default_collate
+from torch.utils.data import DataLoader, DistributedSampler
 
 from config import get_config
 from logger import create_logger
@@ -75,11 +77,27 @@ def parse_option():
 
     return args, config
 
+def collate_fn(batch):
+    if not isinstance(batch[0][0], tuple):
+        return default_collate(batch)
+    else:
+        batch_num = len(batch)
+        ret = []
+        for item_idx in range(len(batch[0][0])):
+            if batch[0][0][item_idx] is None:
+                ret.append(None)
+            else:
+                ret.append(default_collate([batch[i][0][item_idx] for i in range(batch_num)]))
+        ret.append(default_collate([batch[i][1] for i in range(batch_num)]))
+        return ret
 
 def main(config):
     # logger = None
-    data_loader_train = build_loader_imagenet(config, logger, split="train")
-    data_loader_train_scannet = build_loader_scannet(config, logger)
+    # data_loader_train = build_loader_imagenet(config, logger, split="train")
+    # data_loader_train_scannet = build_loader_scannet(config, logger)
+
+    imagenet = build_loader_imagenet(config, logger, split="train")
+    scannet = build_loader_scannet(config, logger)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     model = DKMv2(pvt_depth=4, resolution='extrasmall')
@@ -125,12 +143,23 @@ def main(config):
     logger.info("Start training")
     start_time = time.time()
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
-        data_loader_train.sampler.set_epoch(epoch)
-        data_loader_train_scannet.sampler.set_epoch(epoch)
+
+        imagenet_sampler = DistributedSampler(imagenet, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
+        imagenet_sampler.set_epoch(int(epoch))
+        data_loader_train = DataLoader(imagenet, config.DATA.BATCH_SIZE, sampler=imagenet_sampler, num_workers=config.DATA.NUM_WORKERS,
+                                       pin_memory=True, drop_last=True, collate_fn=collate_fn)
+
+        scannet_sampler = DistributedSampler(scannet, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
+        scannet_sampler.set_epoch(int(epoch))
+        data_loader_train_scannet = DataLoader(scannet, config.DATA.BATCH_SIZE, sampler=scannet_sampler, num_workers=config.DATA.NUM_WORKERS,
+                                pin_memory=True, drop_last=True, collate_fn=collate_fn)
+
+        # data_loader_train.sampler.set_epoch(epoch)
+        # data_loader_train_scannet.sampler.set_epoch(epoch)
         train_one_epoch(config, model, data_loader_train, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer)
         if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
-        # eval(model, n_iter_per_epoch * (epoch + 1), config, writer)
+        eval(model, n_iter_per_epoch * (epoch + 1), config, writer)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
@@ -139,7 +168,13 @@ def main(config):
 @torch.no_grad()
 def eval(model, eval_step, config, writer):
     model.eval()
-    data_loader = build_loader_imagenet(config, logger, split="val", drop_last=True)
+    imagenet_val = build_loader_imagenet(config, logger, split="val", drop_last=True)
+
+    imagenet_sampler = DistributedSampler(imagenet_val, num_replicas=dist.get_world_size(), rank=dist.get_rank(),
+                                          shuffle=True)
+    data_loader = DataLoader(imagenet_val, config.DATA.BATCH_SIZE, sampler=imagenet_sampler,
+                             num_workers=config.DATA.NUM_WORKERS,
+                             pin_memory=True, drop_last=True, collate_fn=collate_fn)
 
     logger.info('Dataset Length {}, BatchSize {}'.format(len(data_loader), config.DATA.BATCH_SIZE))
 

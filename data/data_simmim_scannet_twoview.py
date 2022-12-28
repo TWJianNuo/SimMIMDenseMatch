@@ -79,19 +79,19 @@ class SimMIMTransform:
         return img, mask
 
 
-def collate_fn(batch):
-    if not isinstance(batch[0][0], tuple):
-        return default_collate(batch)
-    else:
-        batch_num = len(batch)
-        ret = []
-        for item_idx in range(len(batch[0][0])):
-            if batch[0][0][item_idx] is None:
-                ret.append(None)
-            else:
-                ret.append(default_collate([batch[i][0][item_idx] for i in range(batch_num)]))
-        ret.append(default_collate([batch[i][1] for i in range(batch_num)]))
-        return ret
+# def collate_fn(batch):
+#     if not isinstance(batch[0][0], tuple):
+#         return default_collate(batch)
+#     else:
+#         batch_num = len(batch)
+#         ret = []
+#         for item_idx in range(len(batch[0][0])):
+#             if batch[0][0][item_idx] is None:
+#                 ret.append(None)
+#             else:
+#                 ret.append(default_collate([batch[i][0][item_idx] for i in range(batch_num)]))
+#         ret.append(default_collate([batch[i][1] for i in range(batch_num)]))
+#         return ret
 
 
 def build_loader_scannet(config, logger):
@@ -100,13 +100,13 @@ def build_loader_scannet(config, logger):
 
     scannet = ScanNetBuilder(data_root=config.DATA.DATA_PATH_SCANNET, progress_bar=False, minoverlap=config.DATA.MINOVERLAP_SCANNET, debug=False)
     scannet_train = scannet.build_scenes(split="train", transform=transform)
-    dataset = ConcatDataset(scannet_train)
+    scannet_train = ConcatDataset(scannet_train)
 
-    logger.info(f'Build dataset: train images = {len(dataset)}')
+    logger.info(f'Build dataset: train images = {len(scannet_train)}')
     logger.info(f'MIN OVERLAP = {config.DATA.MINOVERLAP_SCANNET}')
 
-    sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
-    dataloader = DataLoader(dataset, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,
-                            pin_memory=True, drop_last=True, collate_fn=collate_fn)
+    # sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
+    # dataloader = DataLoader(dataset, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,
+    #                         pin_memory=True, drop_last=True, collate_fn=collate_fn)
 
-    return dataloader
+    return scannet_train

@@ -83,19 +83,19 @@ class SimMIMTransform:
         return img, mask
 
 
-def collate_fn(batch):
-    if not isinstance(batch[0][0], tuple):
-        return default_collate(batch)
-    else:
-        batch_num = len(batch)
-        ret = []
-        for item_idx in range(len(batch[0][0])):
-            if batch[0][0][item_idx] is None:
-                ret.append(None)
-            else:
-                ret.append(default_collate([batch[i][0][item_idx] for i in range(batch_num)]))
-        ret.append(default_collate([batch[i][1] for i in range(batch_num)]))
-        return ret
+# def collate_fn(batch):
+#     if not isinstance(batch[0][0], tuple):
+#         return default_collate(batch)
+#     else:
+#         batch_num = len(batch)
+#         ret = []
+#         for item_idx in range(len(batch[0][0])):
+#             if batch[0][0][item_idx] is None:
+#                 ret.append(None)
+#             else:
+#                 ret.append(default_collate([batch[i][0][item_idx] for i in range(batch_num)]))
+#         ret.append(default_collate([batch[i][1] for i in range(batch_num)]))
+#         return ret
 
 
 def build_loader_mega(config, logger):
@@ -126,8 +126,8 @@ def build_loader_imagenet(config, logger, split, drop_last=True):
     transform = SimMIMTransform(config)
     imagenet = ImageNetDataset(data_root=config.DATA.DATA_PATH, split=split, transform=transform)
     logger.info(f'Build dataset: train images = {len(imagenet)}')
-    sampler = DistributedSampler(imagenet, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
-    dataloader = DataLoader(imagenet, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,
-                            pin_memory=True, drop_last=drop_last, collate_fn=collate_fn)
+    # sampler = DistributedSampler(imagenet, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
+    # dataloader = DataLoader(imagenet, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,
+    #                         pin_memory=True, drop_last=drop_last, collate_fn=collate_fn)
 
-    return dataloader
+    return imagenet
