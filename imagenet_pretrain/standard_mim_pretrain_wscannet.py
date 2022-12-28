@@ -159,7 +159,7 @@ def main(config):
         train_one_epoch(config, model, data_loader_train, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer)
         if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
-        eval(model, n_iter_per_epoch * (epoch + 1), config, writer)
+        # eval(model, n_iter_per_epoch * (epoch + 1), config, writer)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
