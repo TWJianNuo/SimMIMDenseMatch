@@ -206,7 +206,8 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
     model.train()
     optimizer.zero_grad()
 
-    num_steps = 5000
+    # num_steps = 5000
+    num_steps = 100
     batch_time = AverageMeter()
     loss_meter = AverageMeter()
     norm_meter = AverageMeter()
