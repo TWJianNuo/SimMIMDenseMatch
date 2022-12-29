@@ -46,9 +46,9 @@ class ImageNetDataset:
 
     def __getitem__(self, idx):
 
-        if idx >= len(self.data_names):
+        if idx >= len(self.imgs):
             print("ImageNet PairIdx Larger Than max Length")
-        assert idx < len(self.data_names)
+        assert idx < len(self.imgs)
 
         try:
             if self.split == 'val':
