@@ -148,12 +148,15 @@ def main(config):
         imagenet_sampler.set_epoch(int(epoch))
         data_loader_train = DataLoader(imagenet, config.DATA.BATCH_SIZE, sampler=imagenet_sampler, num_workers=config.DATA.NUM_WORKERS,
                                        pin_memory=True, drop_last=True, collate_fn=collate_fn)
+        data_loader_train = iter(data_loader_train)
 
         scannet_sampler = DistributedSampler(scannet, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
         scannet_sampler.set_epoch(int(epoch))
         data_loader_train_scannet = DataLoader(scannet, config.DATA.BATCH_SIZE, sampler=scannet_sampler, num_workers=config.DATA.NUM_WORKERS,
                                 pin_memory=True, drop_last=True, collate_fn=collate_fn)
-
+        data_loader_train_scannet = iter(data_loader_train_scannet)
+        # print("=================")
+        # print(len(scannet_sampler), len(imagenet_sampler))
         # data_loader_train.sampler.set_epoch(epoch)
         # data_loader_train_scannet.sampler.set_epoch(epoch)
         train_one_epoch(config, model, data_loader_train, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer)
@@ -206,15 +209,17 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
     model.train()
     optimizer.zero_grad()
 
-    # num_steps = 5000
-    num_steps = 100
+    num_steps = 5000
     batch_time = AverageMeter()
     loss_meter = AverageMeter()
     norm_meter = AverageMeter()
 
     start = time.time()
     end = time.time()
-    for idx, (imagenet_batch, scannet_batch) in enumerate(zip(data_loader, data_loader_scannet)):
+    for idx in range(num_steps):
+        imagenet_batch = next(data_loader)
+        scannet_batch = next(data_loader_scannet)
+
         img_imagenet, mask_imagenet = imagenet_batch
         img1_scannetnet, mask_scannet, img2_scannetnet, _ = scannet_batch
 

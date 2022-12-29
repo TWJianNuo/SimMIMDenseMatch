@@ -17,7 +17,7 @@ class ScanNetScene:
         self.overlaps = self.overlaps[valid]
         self.data_names = self.data_names[valid]
         if len(self.data_names) > 10000:
-            pairinds = np.random.choice(np.arange(0,len(self.data_names)),10000,replace=False)
+            pairinds = np.random.choice(np.arange(0,len(self.data_names)), 10000, replace=False)
             self.data_names = self.data_names[pairinds]
             self.overlaps = self.overlaps[pairinds]
         self.transform = transform
