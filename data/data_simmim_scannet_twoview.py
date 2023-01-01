@@ -16,7 +16,7 @@ from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.models.layers import to_2tuple
 
 from datasets.scannet import ScanNetBuilder
-from datasets.imagenet_aug import ImangeNetAug
+
 
 class MaskGenerator:
     def __init__(self, input_size=192, mask_patch_size=32, model_patch_size=4, mask_ratio=0.6):
@@ -118,6 +118,7 @@ def build_loader_scannet(config, logger):
     return scannet_train
 
 def build_loader_imagenetaug(config, logger):
+    from datasets.imagenet_aug import ImangeNetAug
     transform = SimMIMTransform(config)
     logger.info(f'Pre-train data transform:\n{transform}')
 
