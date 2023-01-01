@@ -97,7 +97,7 @@ def main(config):
     # data_loader_train = build_loader_imagenet(config, logger, split="train")
     # data_loader_train_scannet = build_loader_scannet(config, logger)
 
-    imagenet = build_loader_imagenet(config, logger, split="val")
+    imagenet = build_loader_imagenet(config, logger, split="train")
     imagenetaug = build_loader_imagenetaug(config, logger)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
