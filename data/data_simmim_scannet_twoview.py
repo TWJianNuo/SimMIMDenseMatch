@@ -16,6 +16,7 @@ from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.models.layers import to_2tuple
 
 from datasets.scannet import ScanNetBuilder
+from datasets.imagenet_aug import ImangeNetAug
 
 class MaskGenerator:
     def __init__(self, input_size=192, mask_patch_size=32, model_patch_size=4, mask_ratio=0.6):
@@ -35,10 +36,34 @@ class MaskGenerator:
         self.token_count = self.rand_size_h * self.rand_size_w
         self.mask_count = int(np.ceil(self.token_count * self.mask_ratio))
 
-    def __call__(self):
+        self.pixel_unshuffle = torch.nn.PixelUnshuffle(self.mask_patch_size)
+
+    def __call__(self, idx=None, validmask=None):
+        if idx is not None:
+            np.random.seed(idx)
+
         mask_idx = np.random.permutation(self.token_count)[:self.mask_count]
         mask = np.zeros(self.token_count, dtype=int)
         mask[mask_idx] = 1
+
+        if validmask is not None:
+            mask = mask.reshape((self.rand_size_h, self.rand_size_w))
+
+            validmask_patch = self.pixel_unshuffle(torch.from_numpy(validmask).unsqueeze(0).unsqueeze(0).float())
+            validmask_patch = torch.sum(validmask_patch, dim=[0, 1])
+            validmask_patch = validmask_patch > (self.mask_patch_size ** 2 * 0.3)
+            validmask_patch = validmask_patch.squeeze().numpy().astype(np.int64)
+
+            remain_selection = (validmask_patch * mask).flatten()
+            visible_valid_patch_num = np.sum((1 - mask) * validmask_patch)
+
+            mask = mask.flatten()
+            remain = 2 - visible_valid_patch_num # At least Two Patch Visible
+            if remain > 0:
+                rnd_idx = np.random.permutation(self.token_count)
+                remain_idx = rnd_idx[remain_selection[rnd_idx] == 1]
+                remain_idx = remain_idx[0:remain]
+                mask[remain_idx] = 0
 
         mask = mask.reshape((self.rand_size_h, self.rand_size_w))
         mask = mask.repeat(self.scale, axis=0).repeat(self.scale, axis=1)
@@ -72,26 +97,11 @@ class SimMIMTransform:
             mask_ratio=config.DATA.MASK_RATIO_SCANNET,
         )
 
-    def __call__(self, img):
+    def __call__(self, img, idx=None, validmask=None):
         img = self.transform_img(img)
-        mask = self.mask_generator()
+        mask = self.mask_generator(idx, validmask)
 
         return img, mask
-
-
-# def collate_fn(batch):
-#     if not isinstance(batch[0][0], tuple):
-#         return default_collate(batch)
-#     else:
-#         batch_num = len(batch)
-#         ret = []
-#         for item_idx in range(len(batch[0][0])):
-#             if batch[0][0][item_idx] is None:
-#                 ret.append(None)
-#             else:
-#                 ret.append(default_collate([batch[i][0][item_idx] for i in range(batch_num)]))
-#         ret.append(default_collate([batch[i][1] for i in range(batch_num)]))
-#         return ret
 
 
 def build_loader_scannet(config, logger):
@@ -105,8 +115,13 @@ def build_loader_scannet(config, logger):
     logger.info(f'Build dataset: train images = {len(scannet_train)}')
     logger.info(f'MIN OVERLAP = {config.DATA.MINOVERLAP_SCANNET}')
 
-    # sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
-    # dataloader = DataLoader(dataset, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,
-    #                         pin_memory=True, drop_last=True, collate_fn=collate_fn)
-
     return scannet_train
+
+def build_loader_imagenetaug(config, logger):
+    transform = SimMIMTransform(config)
+    logger.info(f'Pre-train data transform:\n{transform}')
+
+    imagenetaug = ImangeNetAug(data_root=config.DATA.DATA_PATH, auscale=1.0, ht=config.DATA.IMG_SIZE[0],
+                               wd=config.DATA.IMG_SIZE[1],
+                               homography_augmentation=True, transform=transform)
+    return imagenetaug

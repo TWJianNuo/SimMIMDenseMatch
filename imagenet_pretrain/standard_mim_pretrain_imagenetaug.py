@@ -29,7 +29,7 @@ from optimizer import build_optimizer
 from lr_scheduler import build_scheduler
 from tools.tools import tensor2rgb, tensor2disp
 from data.data_simmim_mega import build_loader_imagenet
-from data.data_simmim_scannet_twoview import build_loader_scannet
+from data.data_simmim_scannet_twoview import build_loader_imagenetaug
 from utils import load_checkpoint, save_checkpoint, get_grad_norm, auto_resume_helper
 
 from timm.utils import AverageMeter
@@ -97,8 +97,8 @@ def main(config):
     # data_loader_train = build_loader_imagenet(config, logger, split="train")
     # data_loader_train_scannet = build_loader_scannet(config, logger)
 
-    imagenet = build_loader_imagenet(config, logger, split="train")
-    scannet = build_loader_scannet(config, logger)
+    imagenet = build_loader_imagenet(config, logger, split="val")
+    imagenetaug = build_loader_imagenetaug(config, logger)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     model = DKMv2(pvt_depth=4, resolution='extrasmall')
@@ -151,16 +151,16 @@ def main(config):
                                        pin_memory=True, drop_last=True, collate_fn=collate_fn)
         data_loader_train = iter(data_loader_train)
 
-        scannet_sampler = DistributedSampler(scannet, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
-        scannet_sampler.set_epoch(int(epoch))
-        data_loader_train_scannet = DataLoader(scannet, config.DATA.BATCH_SIZE, sampler=scannet_sampler, num_workers=config.DATA.NUM_WORKERS,
+        imagenetaug_sampler = DistributedSampler(imagenetaug, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
+        imagenetaug_sampler.set_epoch(int(epoch))
+        data_loader_train_imagenetaug = DataLoader(imagenetaug, config.DATA.BATCH_SIZE, sampler=imagenetaug_sampler, num_workers=config.DATA.NUM_WORKERS,
                                 pin_memory=True, drop_last=True, collate_fn=collate_fn)
-        data_loader_train_scannet = iter(data_loader_train_scannet)
+        data_loader_train_imagenetaug = iter(data_loader_train_imagenetaug)
         # print("=================")
         # print(len(scannet_sampler), len(imagenet_sampler))
         # data_loader_train.sampler.set_epoch(epoch)
         # data_loader_train_scannet.sampler.set_epoch(epoch)
-        train_one_epoch(config, model, data_loader_train, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer)
+        train_one_epoch(config, model, data_loader_train, data_loader_train_imagenetaug, optimizer, epoch, lr_scheduler, writer)
         if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
         # eval(model, n_iter_per_epoch * (epoch + 1), config, writer)
@@ -206,7 +206,7 @@ def eval(model, eval_step, config, writer):
         logger.info('Eval L1 {} at step {}'.format(loss_l1.item(), eval_step))
         writer.add_scalar('Eval/L1', loss_l1, eval_step)
 
-def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, epoch, lr_scheduler, writer):
+def train_one_epoch(config, model, data_loader, data_loader_imagenetaug, optimizer, epoch, lr_scheduler, writer):
     model.train()
     optimizer.zero_grad()
 
@@ -219,25 +219,28 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
     end = time.time()
     for idx in range(num_steps):
         imagenet_batch = next(data_loader)
-        scannet_batch = next(data_loader_scannet)
+        imagenetaug_batch = next(data_loader_imagenetaug)
 
         img_imagenet, mask_imagenet = imagenet_batch
-        img1_scannetnet, mask_scannet, img2_scannetnet, _ = scannet_batch
+        img1_imagenetaug, mask_imagenetaug, img2_imagenetaug, _, mask_scannet_sup, _ = imagenetaug_batch
 
         img_imagenet = img_imagenet.cuda(non_blocking=True)
         mask_imagenet = mask_imagenet.cuda(non_blocking=True)
 
-        img1_scannetnet = img1_scannetnet.cuda(non_blocking=True)
-        img2_scannetnet = img2_scannetnet.cuda(non_blocking=True)
-        mask_scannet = mask_scannet.cuda(non_blocking=True)
+        img1_imagenetaug = img1_imagenetaug.cuda(non_blocking=True)
+        img2_imagenetaug = img2_imagenetaug.cuda(non_blocking=True)
+        mask_imagenetaug = mask_imagenetaug.cuda(non_blocking=True)
+        mask_scannet_sup = mask_scannet_sup.cuda(non_blocking=True)
 
         loss1, _ = model(img_imagenet, mask_imagenet)
-        loss2, x_rec = model(img1_scannetnet, mask_scannet, img2_scannetnet)
+        loss2, x_rec = model(img1_imagenetaug, mask_imagenetaug, img2_imagenetaug, mask_scannet_sup)
 
         loss = (loss1 + loss2) / 2
 
-        img = img1_scannetnet
-        mask = mask_scannet
+        img = img1_imagenetaug
+        img2 = img2_imagenetaug
+        mask = mask_imagenetaug
+        masksup = mask_scannet_sup
 
         if writer is not None:
             writer.add_scalar('loss', loss, num_steps * epoch + idx)
@@ -306,13 +309,18 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
             rec_vls = x_rec * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
                 [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
                 [1, 3, 1, 1]).cuda().float()
+            img2_vls = img2 * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
+                [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
+                [1, 3, 1, 1]).cuda().float()
 
             b, _, h, w = img.shape
 
             vls1 = tensor2rgb(img_vls)
-            vls2 = tensor2rgb(rec_vls)
-            vls3 = tensor2disp(F.interpolate(mask.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
-            vls = np.concatenate([vls1, vls2, vls3], axis=0)
+            vls2 = tensor2rgb(img2_vls)
+            vls3 = tensor2rgb(rec_vls)
+            vls4 = tensor2disp(F.interpolate(mask.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
+            vls5 = tensor2disp(F.interpolate(masksup.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
+            vls = np.concatenate([vls1, vls2, vls3, vls4, vls5], axis=0)
 
             writer.add_image('visualization', (torch.from_numpy(vls).float() / 255).permute([2, 0, 1]), num_steps * epoch + idx)
 
@@ -329,9 +337,7 @@ if __name__ == '__main__':
     config.defrost()
     config.DATA.IMG_SIZE = (160, 192)  # 192
     config['DATA']['MASK_RATIO'] = 0.75
-    config['DATA']['MASK_RATIO_SCANNET'] = 0.85
-    config['DATA']['DATA_PATH_SCANNET'] = args.data_path_scannet
-    config['DATA']['MINOVERLAP_SCANNET'] = args.minoverlap_scannet
+    config['DATA']['MASK_RATIO_SCANNET'] = 0.9
     config['MODEL']['SWIN']['PATCH_SIZE'] = 2
     config['MODEL']['VIT']['PATCH_SIZE'] = 2
     config.freeze()
@@ -356,12 +362,10 @@ if __name__ == '__main__':
     cudnn.benchmark = True
 
     # linear scale the learning rate according to total batch size, may not be optimal
-    # linear_scaled_lr = config.TRAIN.BASE_LR * dist.get_world_size() * args.adjustscaler
-    # linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * dist.get_world_size() * args.adjustscaler
-    # linear_scaled_min_lr = config.TRAIN.MIN_LR * dist.get_world_size() * args.adjustscaler
-    linear_scaled_lr = config.TRAIN.BASE_LR * 2
-    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * 2
-    linear_scaled_min_lr = config.TRAIN.MIN_LR * 2
+    linear_scaled_lr = config.TRAIN.BASE_LR * dist.get_world_size() * args.adjustscaler
+    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * dist.get_world_size() * args.adjustscaler
+    linear_scaled_min_lr = config.TRAIN.MIN_LR * dist.get_world_size() * args.adjustscaler
+
     # gradient accumulation also need to scale the learning rate
     if config.TRAIN.ACCUMULATION_STEPS > 1:
         linear_scaled_lr = linear_scaled_lr * config.TRAIN.ACCUMULATION_STEPS

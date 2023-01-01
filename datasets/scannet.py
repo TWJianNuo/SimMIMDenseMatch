@@ -66,28 +66,26 @@ class ScanNetScene:
             print("Scannet PairIdx Larger Than max Length")
         assert pair_idx < len(self.data_names)
 
-        try:
-            data_name = self.data_names[pair_idx]
-            scene_name, scene_sub_name, stem_name_1, stem_name_2 = data_name
-            scene_name = f'scene{scene_name:04d}_{scene_sub_name:02d}'
+        data_name = self.data_names[pair_idx]
+        scene_name, scene_sub_name, stem_name_1, stem_name_2 = data_name
+        scene_name = f'scene{scene_name:04d}_{scene_sub_name:02d}'
 
-            h5pypath = os.path.join(self.scene_root, scene_name, '{}.hdf5'.format(scene_name))
-            # print(h5pypath)
-            with h5py.File(h5pypath, 'r') as hf:
-                # Load positive pair data
-                im_src_ref = io.BytesIO(np.array(hf['color'][f'{stem_name_1}.jpg']))
-                im_pos_ref = io.BytesIO(np.array(hf['color'][f'{stem_name_2}.jpg']))
+        h5pypath = os.path.join(self.scene_root, scene_name, '{}.hdf5'.format(scene_name))
+        # print(h5pypath)
+        with h5py.File(h5pypath, 'r') as hf:
+            # Load positive pair data
+            im_src_ref = io.BytesIO(np.array(hf['color'][f'{stem_name_1}.jpg']))
+            im_pos_ref = io.BytesIO(np.array(hf['color'][f'{stem_name_2}.jpg']))
 
-                im_src = self.load_im(im_src_ref)
-                im_pos = self.load_im(im_pos_ref)
+            im_src = self.load_im(im_src_ref)
+            im_pos = self.load_im(im_pos_ref)
 
-            img1 = im_src
-            img2 = im_pos
+        img1 = im_src
+        img2 = im_pos
 
-            img1, mask1 = self.transform(img1)
-            img2, mask2 = self.transform(img2)
-        except:
-            print("Scannet REad Error on %s" % h5pypath)
+        img1, mask1 = self.transform(img1)
+        img2, mask2 = self.transform(img2)
+
         return img1, mask1, img2, mask2
 
 

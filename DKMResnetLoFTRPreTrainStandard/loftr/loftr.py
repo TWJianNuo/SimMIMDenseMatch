@@ -37,7 +37,7 @@ class LoFTR(nn.Module):
             nn.PixelShuffle(8),
         )
 
-    def forward(self, img, mask, img2=None):
+    def forward(self, img, mask, img2=None, masksup=None):
         """ 
         Update:
             data (dict): {
@@ -71,10 +71,22 @@ class LoFTR(nn.Module):
         assert patch_sizeh == patch_sizew
         mask = mask.repeat_interleave(patch_sizeh, 1).repeat_interleave(patch_sizew, 2).unsqueeze(1).contiguous()
 
+        if masksup is None:
+            masksup = torch.ones_like(mask)
+
         in_chans = 3
         loss_recon = F.l1_loss(img, rgb_recon, reduction='none')
-        loss = (loss_recon * mask).sum() / (mask.sum() + 1e-5) / in_chans
-        loss2 = (loss_recon * (1 - mask)).sum() / ((1 - mask).sum() + 1e-5) / in_chans
+
+        mask_pos = mask * masksup.unsqueeze(1)
+
+        # from tools.tools import tensor2rgb, tensor2disp
+        # tensor2disp(mask, viewind=0, vmax=1).show()
+        # tensor2disp(masksup.unsqueeze(1), viewind=0, vmax=1).show()
+
+        loss = (loss_recon * mask_pos).sum() / (mask_pos.sum() + 1e-5) / in_chans
+
+        mask_neg = (1 - mask)
+        loss2 = (loss_recon * mask_neg).sum() / (mask_neg.sum() + 1e-5) / in_chans
         loss = loss + loss2 * 0.05
         return loss, rgb_recon
 

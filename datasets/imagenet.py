@@ -50,19 +50,16 @@ class ImageNetDataset:
             print("ImageNet PairIdx Larger Than max Length")
         assert idx < len(self.imgs)
 
-        try:
-            if self.split == 'val':
-                h5path = os.path.join(self.data_root, self.split, 'n00000000.hdf5')
-            elif self.split == 'train':
-                h5path = os.path.join(self.data_root, self.split, '{}.hdf5'.format(self.imgs[idx].split('_')[0]))
-            with h5py.File(h5path, 'r') as hf:
-                img = self.load_im(io.BytesIO(np.array(hf[self.imgs[idx]])))
+        if self.split == 'val':
+            h5path = os.path.join(self.data_root, self.split, 'n00000000.hdf5')
+        elif self.split == 'train':
+            h5path = os.path.join(self.data_root, self.split, '{}.hdf5'.format(self.imgs[idx].split('_')[0]))
+        with h5py.File(h5path, 'r') as hf:
+            img = self.load_im(io.BytesIO(np.array(hf[self.imgs[idx]])))
 
-            if self.split == 'val':
-                img, mask = self.transform(img, idx)
-            else:
-                img, mask = self.transform(img)
-        except:
-            print("ImageNet REad Error on %s" % self.imgs[idx])
+        if self.split == 'val':
+            img, mask = self.transform(img, idx=idx)
+        else:
+            img, mask = self.transform(img)
 
         return img, mask
