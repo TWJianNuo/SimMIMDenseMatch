@@ -362,9 +362,12 @@ if __name__ == '__main__':
     cudnn.benchmark = True
 
     # linear scale the learning rate according to total batch size, may not be optimal
-    linear_scaled_lr = config.TRAIN.BASE_LR * dist.get_world_size() * args.adjustscaler
-    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * dist.get_world_size() * args.adjustscaler
-    linear_scaled_min_lr = config.TRAIN.MIN_LR * dist.get_world_size() * args.adjustscaler
+    # linear_scaled_lr = config.TRAIN.BASE_LR * dist.get_world_size() * args.adjustscaler
+    # linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * dist.get_world_size() * args.adjustscaler
+    # linear_scaled_min_lr = config.TRAIN.MIN_LR * dist.get_world_size() * args.adjustscaler
+    linear_scaled_lr = config.TRAIN.BASE_LR * 2
+    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * 2
+    linear_scaled_min_lr = config.TRAIN.MIN_LR * 2
 
     # gradient accumulation also need to scale the learning rate
     if config.TRAIN.ACCUMULATION_STEPS > 1:
