@@ -2,6 +2,7 @@ import copy
 import torch
 import torch.nn as nn
 from .linear_attention import LinearAttention, FullAttention
+from loguru import logger
 
 
 class LoFTREncoderLayer(nn.Module):
@@ -31,6 +32,8 @@ class LoFTREncoderLayer(nn.Module):
         # norm and dropout
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
+
+        logger.info("Linear Attention") if attention == 'linear' else logger.info("Full Attention")
 
     def forward(self, x, source, x_mask=None, source_mask=None):
         """
