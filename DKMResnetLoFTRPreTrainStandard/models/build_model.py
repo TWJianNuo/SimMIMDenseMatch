@@ -14,7 +14,7 @@ class Wrapper(torch.nn.Module):
     def forward(self, x, mask, x2=None, masksup=None):
         return self.loftr(x, mask, x2, masksup)
 
-def DKMv2(resolution="extrasmall", pvt_depth=4):
+def DKMv2(resolution="extrasmall", pvt_depth=4, usefullattention=False):
     if resolution == "low":
         h, w = 384, 512
     elif resolution == "high":
@@ -28,5 +28,9 @@ def DKMv2(resolution="extrasmall", pvt_depth=4):
     _default_cfg['resnetfpn']['IMG_SIZE'] = (h, w)
     _default_cfg['resnetfpn']['pvt_depth'] = pvt_depth
     _default_cfg['coarse']['d_model'] = 320
+
+    if usefullattention:
+        _default_cfg['coarse']['attention'] = 'full'
+
     loftr = LoFTR(config=_default_cfg)
     return Wrapper(loftr)

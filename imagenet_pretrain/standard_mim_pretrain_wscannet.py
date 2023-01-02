@@ -68,6 +68,7 @@ def parse_option():
                         help='root of output folder, the full path is <output>/<model_name>/<tag> (default: output)')
     parser.add_argument('--tag', help='tag of experiment')
     parser.add_argument('--adjustscaler', type=float, default=1.0)
+    parser.add_argument('--usefullattention', action='store_true')
 
     # distributed training
     parser.add_argument("--local_rank", type=int, required=False, help='local rank for DistributedDataParallel')
@@ -101,7 +102,7 @@ def main(config):
     scannet = build_loader_scannet(config, logger)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
-    model = DKMv2(pvt_depth=4, resolution='extrasmall')
+    model = DKMv2(pvt_depth=4, resolution='extrasmall', usefullattention=args.usefullattention)
     model.cuda()
     logger.info(str(model))
 
