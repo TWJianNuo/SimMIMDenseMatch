@@ -10,7 +10,7 @@ from datasets.imagenet_aug import ImangeNetAug
 from datasets.scannet import ScanNetBuilder
 from data.data_simmim_scannet_twoview import SimMIMTransform
 from config import get_config
-from DKMResnetLoFTRPreTrainStandard.models.build_model import DKMv2
+from DKMResnetLoFTRPreTrainNoPVT.models.build_model import DKMv2
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 parser = argparse.ArgumentParser('SimMIM pre-training script', add_help=False)
