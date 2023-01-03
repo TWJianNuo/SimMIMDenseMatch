@@ -81,7 +81,7 @@ class ResNetSwinFPN(nn.Module):
         # Configurate PVT Transformer
         self.img_size = config['IMG_SIZE']
 
-        logger.info("PVT_DEPTH: %d, IMGH: %d, IMGW: %d" % (self.pvt_depth, self.img_size[0], self.img_size[1]))
+        logger.info("IMGH: %d, IMGW: %d" % (self.img_size[0], self.img_size[1]))
 
         self.mask_token = nn.Parameter(torch.zeros(1, 1, 128))
         self._trunc_normal_(self.mask_token, std=.02)
