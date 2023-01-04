@@ -72,7 +72,7 @@ class LoFTR(nn.Module):
         mask = mask.repeat_interleave(patch_sizeh, 1).repeat_interleave(patch_sizew, 2).unsqueeze(1).contiguous()
 
         if masksup is None:
-            masksup = torch.ones_like(mask)
+            masksup = torch.ones_like(mask).squeeze(1)
 
         in_chans = 3
         loss_recon = F.l1_loss(img, rgb_recon, reduction='none')
