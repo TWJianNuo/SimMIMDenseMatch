@@ -260,7 +260,7 @@ if __name__ == '__main__':
     config.defrost()
     config.DATA.IMG_SIZE = (160, 192)  # 192
     config['DATA']['MASK_RATIO'] = 0.75
-    config['DATA']['MASK_RATIO_SCANNET'] = 0.9
+    config['DATA']['MASK_RATIO_SCANNET'] = 0.85
     config['MODEL']['SWIN']['PATCH_SIZE'] = 2
     config['MODEL']['VIT']['PATCH_SIZE'] = 2
     config['DATA']['DATA_PATH_SCANNET'] = args.data_path_scannet
