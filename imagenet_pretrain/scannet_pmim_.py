@@ -141,7 +141,7 @@ def main(gpu, config, args):
     if config.MODEL.RESUME:
         load_checkpoint(config, model_without_ddp, optimizer, lr_scheduler, logger)
 
-    if config.LOCAL_RANK == 0:
+    if gpu == 0:
         logger.info(f'Create Summary Writer')
         writer = SummaryWriter(config.OUTPUT, flush_secs=30)
     else:
