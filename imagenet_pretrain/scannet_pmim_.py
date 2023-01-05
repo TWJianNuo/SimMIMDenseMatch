@@ -179,40 +179,46 @@ def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, 
     start = time.time()
     end = time.time()
     for idx in range(num_steps):
-        scannet_batch = next(data_loader_train_scannet)
-        img1_scannet = scannet_batch['img1']
-        mask_scannet = scannet_batch['mask1']
-        img2_scannet = scannet_batch['img2']
+        with torch.autograd.set_detect_anomaly(True):
+            scannet_batch = next(data_loader_train_scannet)
+            img1_scannet = scannet_batch['img1']
+            mask_scannet = scannet_batch['mask1']
+            img2_scannet = scannet_batch['img2']
 
-        img1_scannet = img1_scannet.cuda(non_blocking=True)
-        img2_scannet = img2_scannet.cuda(non_blocking=True)
-        mask_scannet = mask_scannet.cuda(non_blocking=True)
+            img1_scannet = img1_scannet.cuda(non_blocking=True)
+            img2_scannet = img2_scannet.cuda(non_blocking=True)
+            mask_scannet = mask_scannet.cuda(non_blocking=True)
 
-        loss, x_rec = model(img1_scannet, mask_scannet, img2_scannet, None)
+            loss, x_rec = model(img1_scannet, mask_scannet, img2_scannet, None)
 
-        img = img1_scannet
-        img2 = img2_scannet
-        mask = mask_scannet
+            assert torch.sum(torch.isnan(img1_scannet)) == 0
+            assert torch.sum(torch.isnan(img2_scannet)) == 0
+            assert torch.sum(torch.isnan(mask_scannet)) == 0
+            assert torch.sum(torch.isnan(loss)) == 0
 
-        if writer is not None:
-            writer.add_scalar('loss', loss, num_steps * epoch + idx)
-            writer.add_scalar('lr', optimizer.param_groups[0]['lr'], num_steps * epoch + idx)
+            img = img1_scannet
+            img2 = img2_scannet
+            mask = mask_scannet
 
-        optimizer.zero_grad()
-        loss.backward()
-        if config.TRAIN.CLIP_GRAD:
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.TRAIN.CLIP_GRAD)
-        else:
-            grad_norm = get_grad_norm(model.parameters())
-        optimizer.step()
-        lr_scheduler.step_update(epoch * num_steps + idx)
+            if writer is not None:
+                writer.add_scalar('loss', loss, num_steps * epoch + idx)
+                writer.add_scalar('lr', optimizer.param_groups[0]['lr'], num_steps * epoch + idx)
 
-        torch.cuda.synchronize()
+            optimizer.zero_grad()
+            loss.backward()
+            if config.TRAIN.CLIP_GRAD:
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.TRAIN.CLIP_GRAD)
+            else:
+                grad_norm = get_grad_norm(model.parameters())
+            optimizer.step()
+            lr_scheduler.step_update(epoch * num_steps + idx)
 
-        loss_meter.update(loss.item(), img.size(0))
-        norm_meter.update(grad_norm)
-        batch_time.update(time.time() - end)
-        end = time.time()
+            torch.cuda.synchronize()
+
+            loss_meter.update(loss.item(), img.size(0))
+            norm_meter.update(grad_norm)
+            batch_time.update(time.time() - end)
+            end = time.time()
 
         if idx % config.PRINT_FREQ == 0:
             lr = optimizer.param_groups[0]['lr']
