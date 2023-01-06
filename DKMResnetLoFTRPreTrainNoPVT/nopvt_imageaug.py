@@ -153,23 +153,21 @@ def main(gpu, config, args):
         imagenetaug_sampler = torch.utils.data.distributed.DistributedSampler(
             imagenetaug, seed=epoch, shuffle=True, drop_last=True)
         imagenetaug_sampler.set_epoch(int(epoch))
-        # data_loader_train_imagenetaug = torch.utils.data.DataLoader(
-        #     imagenetaug, batch_size=config.DATA.BATCH_SIZE,
-        #     sampler=imagenetaug_sampler, num_workers=config.DATA.NUM_WORKERS,
-        #     pin_memory=True)
         data_loader_train_imagenetaug = torch.utils.data.DataLoader(
             imagenetaug, batch_size=config.DATA.BATCH_SIZE,
-            sampler=imagenetaug_sampler, num_workers=0,
+            sampler=imagenetaug_sampler, num_workers=config.DATA.NUM_WORKERS,
             pin_memory=True)
         data_loader_train_imagenetaug = iter(data_loader_train_imagenetaug)
 
         train_one_epoch(config, model, data_loader_train_imagenetaug, optimizer, epoch, lr_scheduler, writer, logger)
         if gpu == 0 and dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
+        torch.cuda.synchronize()
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     logger.info('Training time {}'.format(total_time_str))
+    torch.cuda.synchronize()
 
 def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr_scheduler, writer, logger):
     model.train()
@@ -183,16 +181,6 @@ def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr
     start = time.time()
     end = time.time()
     for idx in range(num_steps):
-        # imagenetaug_batch = next(data_loader_imagenetaug)
-        # img1_imagenetaug, mask_imagenetaug, img2_imagenetaug, _, mask_scannet_sup, _ = imagenetaug_batch
-        #
-        # img1_imagenetaug = img1_imagenetaug.cuda(non_blocking=True)
-        # img2_imagenetaug = img2_imagenetaug.cuda(non_blocking=True)
-        # mask_imagenetaug = mask_imagenetaug.cuda(non_blocking=True)
-        # mask_scannet_sup = mask_scannet_sup.cuda(non_blocking=True)
-        #
-        # loss, x_rec = model(img1_imagenetaug, mask_imagenetaug, img2_imagenetaug, mask_scannet_sup)
-
         imagenetaug_batch = next(data_loader_imagenetaug)
         img1_imagenetaug = imagenetaug_batch['imgsrc']
         mask_imagenetaug = imagenetaug_batch['mask1']
@@ -239,7 +227,6 @@ def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr
         lr_scheduler.step_update(epoch * num_steps + idx)
 
         torch.cuda.synchronize()
-
         loss_meter.update(loss.item(), img.size(0))
         norm_meter.update(grad_norm)
         batch_time.update(time.time() - end)
@@ -274,7 +261,7 @@ def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr
             vls2 = tensor2rgb(img2_vls)
             vls3 = tensor2rgb(rec_vls)
             vls4 = tensor2disp(F.interpolate(mask.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
-            vls5 = tensor2disp(F.interpolate(mask_imagenetaug_sup.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
+            vls5 = tensor2disp(F.interpolate(mask_sup.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
             vls = np.concatenate([vls1, vls2, vls3, vls4, vls5], axis=0)
 
             writer.add_image('visualization', (torch.from_numpy(vls).float() / 255).permute([2, 0, 1]), num_steps * epoch + idx)
