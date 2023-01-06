@@ -98,7 +98,7 @@ def main(config):
     imagenetaug = build_loader_imagenetaug(config, logger)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
-    model = DKMv2(pvt_depth=4, resolution='extrasmall', usefullattention=args.usefullattention)
+    model = DKMv2()
     model.cuda()
     logger.info(str(model))
 
