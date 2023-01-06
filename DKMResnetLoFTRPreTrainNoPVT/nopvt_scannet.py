@@ -6,7 +6,7 @@
 # Modified by Zhenda Xie
 # --------------------------------------------------------
 from __future__ import print_function, division
-import os, sys, inspect, time, tqdm
+import os, sys, inspect, time, tqdm, copy
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe()))))
 sys.path.insert(0, project_root)
 
@@ -150,11 +150,12 @@ def main(gpu, config, args):
     logger.info("Start training")
     start_time = time.time()
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
+        print("Start to Initialize New dataloader")
         scannet_sampler = torch.utils.data.distributed.DistributedSampler(
-            scannet, seed=epoch, shuffle=True, drop_last=True)
+            copy.deepcopy(scannet), seed=epoch, shuffle=True, drop_last=True)
         scannet_sampler.set_epoch(int(epoch))
         data_loader_train_scannet = torch.utils.data.DataLoader(
-            scannet, batch_size=config.DATA.BATCH_SIZE,
+            copy.deepcopy(scannet), batch_size=config.DATA.BATCH_SIZE,
             sampler=scannet_sampler, num_workers=config.DATA.NUM_WORKERS,
             pin_memory=True)
         data_loader_train_scannet = iter(data_loader_train_scannet)
