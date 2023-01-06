@@ -57,7 +57,6 @@ def parse_option():
     # easy config modification
     parser.add_argument('--batch-size', type=int, help="batch size for single GPU")
     parser.add_argument('--data-path', type=str, help='path to dataset')
-    parser.add_argument('--data-path-scannet', type=str, help='path to dataset scannet')
     parser.add_argument('--minoverlap-scannet', type=float, default=0.0)
     parser.add_argument('--resume', help='resume from checkpoint')
     parser.add_argument('--accumulation-steps', type=int, help="gradient accumulation steps")
@@ -282,8 +281,6 @@ if __name__ == '__main__':
     config['MODEL']['SWIN']['PATCH_SIZE'] = 2
     config['MODEL']['VIT']['PATCH_SIZE'] = 2
     config['DATA']['MASK_PATCH_SIZE'] = args.mask_patch_size
-    config['DATA']['DATA_PATH_SCANNET'] = args.data_path_scannet
-    config['DATA']['MINOVERLAP_SCANNET'] = args.minoverlap_scannet
     config.freeze()
 
     # linear scale the learning rate according to total batch size, may not be optimal
