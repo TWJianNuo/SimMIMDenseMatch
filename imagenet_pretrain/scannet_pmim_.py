@@ -212,6 +212,12 @@ def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, 
             grad_norm = get_grad_norm(model.parameters())
 
         if torch.sum(torch.isnan(loss)) > 0:
+            print("=============== NAN Detected, Saving ckpt for Debugging... ===============")
+            print("Max Img Value: %f, %f, %f" % (img.max().item(), img2.max().item(), torch.sum(mask).item()))
+            save_checkpoint(config, 99999999, model.module, 0., optimizer, lr_scheduler, logger)
+            import pickle
+            filehandler = open(os.path.join(config.OUTPUT, 'debug_input.pkl'), "wb")
+            pickle.dump({'img1_scannet': img1_scannet, 'img2_scannet': img2_scannet, 'mask_scannet': mask_scannet}, filehandler)
             optimizer.zero_grad()
 
         optimizer.step()
