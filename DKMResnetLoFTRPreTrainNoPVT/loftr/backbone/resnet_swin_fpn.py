@@ -77,8 +77,6 @@ class ResNetSwinFPN(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-        self.pvt_depth = config['pvt_depth']
-        # Configurate PVT Transformer
         self.img_size = config['IMG_SIZE']
 
         logger.info("IMGH: %d, IMGW: %d" % (self.img_size[0], self.img_size[1]))

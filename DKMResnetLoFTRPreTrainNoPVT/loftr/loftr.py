@@ -21,14 +21,6 @@ class LoFTR(nn.Module):
         self.outputfeature = outputfeature
         assert self.outputfeature in ['transformer', 'fpn', 'concatenated']
 
-        # self.out_conv = nn.Sequential(
-        #     nn.Conv2d(
-        #         in_channels=320,
-        #         out_channels=8 ** 2 * 3,
-        #         kernel_size=1),
-        #     nn.PixelShuffle(8),
-        # )
-
         self.out_conv_pair = nn.Sequential(
             nn.Conv2d(
                 in_channels=320,
