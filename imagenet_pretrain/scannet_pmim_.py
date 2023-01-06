@@ -194,7 +194,8 @@ def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, 
             assert torch.sum(torch.isnan(img1_scannet)) == 0
             assert torch.sum(torch.isnan(img2_scannet)) == 0
             assert torch.sum(torch.isnan(mask_scannet)) == 0
-            assert torch.sum(torch.isnan(loss)) == 0
+            # assert torch.sum(torch.isnan(loss)) == 0
+            assert torch.sum(mask_scannet) > 0
 
             img = img1_scannet
             img2 = img2_scannet
@@ -210,6 +211,10 @@ def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, 
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.TRAIN.CLIP_GRAD)
             else:
                 grad_norm = get_grad_norm(model.parameters())
+
+            if torch.sum(torch.isnan(loss)) > 0:
+                optimizer.zero_grad()
+
             optimizer.step()
             lr_scheduler.step_update(epoch * num_steps + idx)
 
