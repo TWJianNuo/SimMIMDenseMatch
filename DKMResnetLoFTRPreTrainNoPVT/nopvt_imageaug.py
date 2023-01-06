@@ -36,7 +36,7 @@ from timm.utils import AverageMeter
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 from DKMResnetLoFTRPreTrainNoPVT.models.build_model import DKMv2
-from DKMResnetLoFTRPreTrainNoPVT.datasets.scannet import build_loader_scannet
+from DKMResnetLoFTRPreTrainNoPVT.datasets.imagenetaug import build_loader_imagenetaug
 
 try:
     # noinspection PyUnresolvedReferences
@@ -69,7 +69,7 @@ def parse_option():
                         help='root of output folder, the full path is <output>/<model_name>/<tag> (default: output)')
     parser.add_argument('--tag', help='tag of experiment')
     parser.add_argument('--adjustscaler', type=float, default=1.0)
-    parser.add_argument('--usefullattention', action='store_true')
+    parser.add_argument('--mask-patch-size', type=int, default=32)
 
     parser.add_argument('--dist_url', type=str, help='url used to set up distributed training', default='tcp://127.0.0.1:1235')
     parser.add_argument('--dist_backend', type=str, help='distributed backend', default='nccl')
@@ -104,10 +104,10 @@ def main(gpu, config, args):
     # print config
     logger.info(config.dump())
 
-    scannet = build_loader_scannet(config, logger)
+    imagenetaug = build_loader_imagenetaug(config)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
-    model = DKMv2(pvt_depth=4, resolution='extrasmall', usefullattention=args.usefullattention)
+    model = DKMv2()
     model.cuda()
     logger.info(str(model))
 
@@ -150,16 +150,20 @@ def main(gpu, config, args):
     logger.info("Start training")
     start_time = time.time()
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
-        scannet_sampler = torch.utils.data.distributed.DistributedSampler(
-            scannet, seed=epoch, shuffle=True, drop_last=True)
-        scannet_sampler.set_epoch(int(epoch))
-        data_loader_train_scannet = torch.utils.data.DataLoader(
-            scannet, batch_size=config.DATA.BATCH_SIZE,
-            sampler=scannet_sampler, num_workers=config.DATA.NUM_WORKERS,
+        imagenetaug_sampler = torch.utils.data.distributed.DistributedSampler(
+            imagenetaug, seed=epoch, shuffle=True, drop_last=True)
+        imagenetaug_sampler.set_epoch(int(epoch))
+        # data_loader_train_imagenetaug = torch.utils.data.DataLoader(
+        #     imagenetaug, batch_size=config.DATA.BATCH_SIZE,
+        #     sampler=imagenetaug_sampler, num_workers=config.DATA.NUM_WORKERS,
+        #     pin_memory=True)
+        data_loader_train_imagenetaug = torch.utils.data.DataLoader(
+            imagenetaug, batch_size=config.DATA.BATCH_SIZE,
+            sampler=imagenetaug_sampler, num_workers=0,
             pin_memory=True)
-        data_loader_train_scannet = iter(data_loader_train_scannet)
+        data_loader_train_imagenetaug = iter(data_loader_train_imagenetaug)
 
-        train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer, logger)
+        train_one_epoch(config, model, data_loader_train_imagenetaug, optimizer, epoch, lr_scheduler, writer, logger)
         if gpu == 0 and dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
 
@@ -167,7 +171,7 @@ def main(gpu, config, args):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     logger.info('Training time {}'.format(total_time_str))
 
-def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer, logger):
+def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr_scheduler, writer, logger):
     model.train()
     optimizer.zero_grad()
 
@@ -179,26 +183,37 @@ def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, 
     start = time.time()
     end = time.time()
     for idx in range(num_steps):
-        scannet_batch = next(data_loader_train_scannet)
-        img1_scannet = scannet_batch['img1']
-        mask_scannet = scannet_batch['mask1']
-        img2_scannet = scannet_batch['img2']
+        # imagenetaug_batch = next(data_loader_imagenetaug)
+        # img1_imagenetaug, mask_imagenetaug, img2_imagenetaug, _, mask_scannet_sup, _ = imagenetaug_batch
+        #
+        # img1_imagenetaug = img1_imagenetaug.cuda(non_blocking=True)
+        # img2_imagenetaug = img2_imagenetaug.cuda(non_blocking=True)
+        # mask_imagenetaug = mask_imagenetaug.cuda(non_blocking=True)
+        # mask_scannet_sup = mask_scannet_sup.cuda(non_blocking=True)
+        #
+        # loss, x_rec = model(img1_imagenetaug, mask_imagenetaug, img2_imagenetaug, mask_scannet_sup)
 
-        img1_scannet = img1_scannet.cuda(non_blocking=True)
-        img2_scannet = img2_scannet.cuda(non_blocking=True)
-        mask_scannet = mask_scannet.cuda(non_blocking=True)
+        imagenetaug_batch = next(data_loader_imagenetaug)
+        img1_imagenetaug = imagenetaug_batch['imgsrc']
+        mask_imagenetaug = imagenetaug_batch['mask1']
+        img2_imagenetaug = imagenetaug_batch['imgdst']
+        mask_imagenetaug_sup = imagenetaug_batch['vis_src_recon']
 
-        loss, x_rec = model(img1_scannet, mask_scannet, img2_scannet, None)
+        img1_imagenetaug = img1_imagenetaug.cuda(non_blocking=True)
+        img2_imagenetaug = img2_imagenetaug.cuda(non_blocking=True)
+        mask_imagenetaug = mask_imagenetaug.cuda(non_blocking=True)
+        mask_imagenetaug_sup = mask_imagenetaug_sup.cuda(non_blocking=True)
 
-        assert torch.sum(torch.isnan(img1_scannet)) == 0
-        assert torch.sum(torch.isnan(img2_scannet)) == 0
-        assert torch.sum(torch.isnan(mask_scannet)) == 0
-        # assert torch.sum(torch.isnan(loss)) == 0
-        assert torch.sum(mask_scannet) > 0
+        loss, x_rec = model(img1_imagenetaug, mask_imagenetaug, img2_imagenetaug, mask_imagenetaug_sup)
 
-        img = img1_scannet
-        img2 = img2_scannet
-        mask = mask_scannet
+        assert torch.sum(torch.isnan(img1_imagenetaug)) == 0
+        assert torch.sum(torch.isnan(img2_imagenetaug)) == 0
+        assert torch.sum(torch.isnan(mask_imagenetaug)) == 0
+
+        img = img1_imagenetaug
+        img2 = img2_imagenetaug
+        mask = mask_imagenetaug
+        mask_sup = mask_imagenetaug_sup
 
         if writer is not None:
             writer.add_scalar('loss', loss, num_steps * epoch + idx)
@@ -217,7 +232,7 @@ def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, 
             save_checkpoint(config, 99999999, model.module, 0., optimizer, lr_scheduler, logger)
             import pickle
             filehandler = open(os.path.join(config.OUTPUT, 'debug_input.pkl'), "wb")
-            pickle.dump({'img1_scannet': img1_scannet, 'img2_scannet': img2_scannet, 'mask_scannet': mask_scannet}, filehandler)
+            pickle.dump({'img1_imagenetaug': img1_imagenetaug, 'img2_imagenetaug': img2_imagenetaug, 'mask_imagenetaug': mask_imagenetaug, 'mask_sup': mask_imagenetaug_sup}, filehandler)
             optimizer.zero_grad()
 
         optimizer.step()
@@ -259,7 +274,8 @@ def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, 
             vls2 = tensor2rgb(img2_vls)
             vls3 = tensor2rgb(rec_vls)
             vls4 = tensor2disp(F.interpolate(mask.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
-            vls = np.concatenate([vls1, vls2, vls3, vls4], axis=0)
+            vls5 = tensor2disp(F.interpolate(mask_imagenetaug_sup.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
+            vls = np.concatenate([vls1, vls2, vls3, vls4, vls5], axis=0)
 
             writer.add_image('visualization', (torch.from_numpy(vls).float() / 255).permute([2, 0, 1]), num_steps * epoch + idx)
 
@@ -275,10 +291,10 @@ if __name__ == '__main__':
 
     config.defrost()
     config.DATA.IMG_SIZE = (160, 192)  # 192
-    config['DATA']['MASK_RATIO'] = 0.75
-    config['DATA']['MASK_RATIO_SCANNET'] = 0.85
+    config['DATA']['MASK_RATIO_SCANNET'] = 0.9
     config['MODEL']['SWIN']['PATCH_SIZE'] = 2
     config['MODEL']['VIT']['PATCH_SIZE'] = 2
+    config['DATA']['MASK_PATCH_SIZE'] = args.mask_patch_size
     config['DATA']['DATA_PATH_SCANNET'] = args.data_path_scannet
     config['DATA']['MINOVERLAP_SCANNET'] = args.minoverlap_scannet
     config.freeze()

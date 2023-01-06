@@ -162,10 +162,12 @@ def main(gpu, config, args):
         train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer, logger)
         if gpu == 0 and dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
+        torch.cuda.synchronize()
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     logger.info('Training time {}'.format(total_time_str))
+    torch.cuda.synchronize()
 
 def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer, logger):
     model.train()
