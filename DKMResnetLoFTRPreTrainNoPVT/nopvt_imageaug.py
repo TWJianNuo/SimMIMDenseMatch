@@ -237,6 +237,7 @@ def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr
             import pickle
             filehandler = open(os.path.join(config.OUTPUT, 'debug_input.pkl'), "wb")
             pickle.dump({'img1_imagenetaug': img1_imagenetaug, 'img2_imagenetaug': img2_imagenetaug, 'mask_imagenetaug': mask_imagenetaug, 'mask_sup': mask_imagenetaug_sup}, filehandler)
+            raise NotImplementedError()
 
         if writer is not None:
             writer.add_scalar('loss', loss, num_steps * epoch + idx)
@@ -263,7 +264,7 @@ def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr
                 f'loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
                 f'grad_norm {norm_meter.val:.4f} ({norm_meter.avg:.4f})\t'
                 f'mem {memory_used:.0f}MB\t'
-                f'maxparam {max_tensor.item():.0f}')
+                f'maxparam {max_tensor.item():.2f}')
 
         if (idx % config.PRINT_FREQ == 0) and (writer is not None):
             img_vls = img * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(

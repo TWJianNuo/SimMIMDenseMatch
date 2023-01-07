@@ -77,7 +77,7 @@ class LoFTR(nn.Module):
 
         loss = (loss_recon * mask_pos).sum() / (mask_pos.sum() + 1e-5) / in_chans
 
-        mask_neg = (1 - mask)
-        loss2 = (loss_recon * mask_neg).sum() / (mask_neg.sum() + 1e-5) / in_chans
-        loss = loss + loss2 * 0.05
+        # mask_neg = (1 - mask)
+        # loss2 = (loss_recon * mask_neg).sum() / (mask_neg.sum() + 1e-5) / in_chans
+        # loss = loss + loss2 * 0.05
         return loss, rgb_recon
