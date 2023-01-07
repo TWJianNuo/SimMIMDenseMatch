@@ -169,6 +169,25 @@ def main(gpu, config, args):
     logger.info('Training time {}'.format(total_time_str))
     torch.cuda.synchronize()
 
+def on_after_backward(model, optimizer, logger):
+    valid_gradients = True
+    max_tensor = 0
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            valid_gradients = not (torch.isnan(param.grad).any() or torch.isinf(param.grad).any())
+            if not valid_gradients:
+                break
+        if max_tensor < param.data.abs().max():
+            max_tensor = param.data.abs().max()
+
+    if not valid_gradients:
+        logger.setLevel(logging.WARNING)
+        logger.warning(f'detected inf or nan values in gradients. not updating model parameters')
+        logger.setLevel(logging.ERROR)
+        optimizer.zero_grad()
+
+    return valid_gradients, max_tensor
+
 def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr_scheduler, writer, logger):
     model.train()
     optimizer.zero_grad()
@@ -203,10 +222,6 @@ def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr
         mask = mask_imagenetaug
         mask_sup = mask_imagenetaug_sup
 
-        if writer is not None:
-            writer.add_scalar('loss', loss, num_steps * epoch + idx)
-            writer.add_scalar('lr', optimizer.param_groups[0]['lr'], num_steps * epoch + idx)
-
         optimizer.zero_grad()
         loss.backward()
         if config.TRAIN.CLIP_GRAD:
@@ -214,14 +229,19 @@ def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr
         else:
             grad_norm = get_grad_norm(model.parameters())
 
-        if torch.sum(torch.isnan(loss)) > 0:
+        valid_gradients, max_tensor = on_after_backward(model, optimizer, logger)
+        if not valid_gradients:
             print("=============== NAN Detected, Saving ckpt for Debugging... ===============")
             print("Max Img Value: %f, %f, %f" % (img.max().item(), img2.max().item(), torch.sum(mask).item()))
             save_checkpoint(config, 99999999, model.module, 0., optimizer, lr_scheduler, logger)
             import pickle
             filehandler = open(os.path.join(config.OUTPUT, 'debug_input.pkl'), "wb")
             pickle.dump({'img1_imagenetaug': img1_imagenetaug, 'img2_imagenetaug': img2_imagenetaug, 'mask_imagenetaug': mask_imagenetaug, 'mask_sup': mask_imagenetaug_sup}, filehandler)
-            optimizer.zero_grad()
+
+        if writer is not None:
+            writer.add_scalar('loss', loss, num_steps * epoch + idx)
+            writer.add_scalar('lr', optimizer.param_groups[0]['lr'], num_steps * epoch + idx)
+            writer.add_scalar('maxtensor', max_tensor, num_steps * epoch + idx)
 
         optimizer.step()
         lr_scheduler.step_update(epoch * num_steps + idx)
@@ -242,7 +262,8 @@ def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr
                 f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
                 f'loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
                 f'grad_norm {norm_meter.val:.4f} ({norm_meter.avg:.4f})\t'
-                f'mem {memory_used:.0f}MB')
+                f'mem {memory_used:.0f}MB\t'
+                f'maxparam {max_tensor.item():.0f}')
 
         if (idx % config.PRINT_FREQ == 0) and (writer is not None):
             img_vls = img * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
