@@ -241,18 +241,12 @@ def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, 
 
             save_checkpoint(config, 99999999, model.module, 0., optimizer, lr_scheduler, logger)
             import pickle
-            filehandler = open(os.path.join(config.OUTPUT, 'debug_input.pkl'), "wb")
-            pickle.dump({'img1_scannet': img1_scannet, 'img2_scannet': img2_scannet, 'mask_scannet': mask_scannet}, filehandler)
-            raise NotImplementedError()
-
-            save_checkpoint(config, 99999999, model.module, 0., optimizer, lr_scheduler, logger)
-            import pickle
             with open(os.path.join(config.OUTPUT, 'debug_input.pkl'), 'wb') as f:
                 pickle.dump({
                     'img1_scannet': img1_scannet.cpu(),
                     'img2_scannet': img2_scannet.cpu(),
                     'mask_scannet': mask_scannet.cpu()}, f)
-
+            raise NotImplementedError()
             # with open(os.path.join(config.OUTPUT, 'debug_input.pkl'), 'rb') as f:
             #     debug_in = pickle.load(f)
             #     img1_imagenetaug = debug_in['img1_imagenetaug']
