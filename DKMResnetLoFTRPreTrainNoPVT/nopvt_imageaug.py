@@ -233,10 +233,34 @@ def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr
         if not valid_gradients:
             print("=============== NAN Detected, Saving ckpt for Debugging... ===============")
             print("Max Img Value: %f, %f, %f" % (img.max().item(), img2.max().item(), torch.sum(mask).item()))
+
+            for p in model.parameters():
+                assert torch.sum(torch.isnan(p.data)) == 0
+                assert torch.sum(torch.isinf(p.data)) == 0
+
+            print("No nan Value in Model paramters found" % (img.max().item(), img2.max().item(), torch.sum(mask).item()))
+
             save_checkpoint(config, 99999999, model.module, 0., optimizer, lr_scheduler, logger)
             import pickle
-            filehandler = open(os.path.join(config.OUTPUT, 'debug_input.pkl'), "wb")
-            pickle.dump({'img1_imagenetaug': img1_imagenetaug, 'img2_imagenetaug': img2_imagenetaug, 'mask_imagenetaug': mask_imagenetaug, 'mask_sup': mask_imagenetaug_sup}, filehandler)
+            with open(os.path.join(config.OUTPUT, 'debug_input.pkl'), 'wb') as f:
+                pickle.dump({
+                    'img1_imagenetaug': img1_imagenetaug.cpu(),
+                    'img2_imagenetaug': img2_imagenetaug.cpu(),
+                    'mask_imagenetaug': mask_imagenetaug.cpu(),
+                    'mask_sup': mask_imagenetaug_sup.cpu()}, f)
+
+            # with open(os.path.join(config.OUTPUT, 'debug_input.pkl'), 'rb') as f:
+            #     debug_in = pickle.load(f)
+            #     img1_imagenetaug = debug_in['img1_imagenetaug']
+            #     img2_imagenetaug = debug_in['img2_imagenetaug']
+            #     mask_imagenetaug = debug_in['mask_imagenetaug']
+            #     mask_sup = debug_in['mask_sup']
+            #
+            # state_dict = torch.load('/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblateCoaseCorr/nopvt_imageaug_psz32/ckpt_epoch_99999999.pth')
+            # incompactible = model.module.load_state_dict(state_dict['model'], strict=True)
+
+
+
             raise NotImplementedError()
 
         if writer is not None:
