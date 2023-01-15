@@ -237,7 +237,7 @@ def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, 
                 assert torch.sum(torch.isnan(p.data)) == 0
                 assert torch.sum(torch.isinf(p.data)) == 0
 
-            print("No nan Value in Model paramters found" % (img.max().item(), img2.max().item(), torch.sum(mask).item()))
+            print("No nan Value in Model paramters found")
 
             save_checkpoint(config, 99999999, model.module, 0., optimizer, lr_scheduler, logger)
             import pickle

@@ -159,7 +159,7 @@ def main(gpu, config, args):
             pin_memory=True)
         data_loader_train_imagenetaug = iter(data_loader_train_imagenetaug)
 
-        train_one_epoch(config, model, data_loader_train_imagenetaug, optimizer, epoch, lr_scheduler, writer, logger)
+        train_one_epoch(config, model, data_loader_train_imagenetaug, optimizer, epoch, lr_scheduler, writer, logger, gpu)
         if gpu == 0 and dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
         torch.cuda.synchronize()
@@ -188,7 +188,7 @@ def on_after_backward(model, optimizer, logger):
 
     return valid_gradients, max_tensor
 
-def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr_scheduler, writer, logger):
+def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr_scheduler, writer, logger, gpu):
     model.train()
     optimizer.zero_grad()
 
@@ -238,30 +238,31 @@ def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr
                 assert torch.sum(torch.isnan(p.data)) == 0
                 assert torch.sum(torch.isinf(p.data)) == 0
 
-            print("No nan Value in Model paramters found" % (img.max().item(), img2.max().item(), torch.sum(mask).item()))
+            print("No nan Value in Model paramters found")
 
             save_checkpoint(config, 99999999, model.module, 0., optimizer, lr_scheduler, logger)
             import pickle
-            with open(os.path.join(config.OUTPUT, 'debug_input.pkl'), 'wb') as f:
+            with open(os.path.join(config.OUTPUT, 'debug_input_gpu{}.pkl'.format(gpu)), 'wb') as f:
                 pickle.dump({
                     'img1_imagenetaug': img1_imagenetaug.cpu(),
                     'img2_imagenetaug': img2_imagenetaug.cpu(),
                     'mask_imagenetaug': mask_imagenetaug.cpu(),
                     'mask_sup': mask_imagenetaug_sup.cpu()}, f)
+            raise NotImplementedError()
 
-            # with open(os.path.join(config.OUTPUT, 'debug_input.pkl'), 'rb') as f:
+            # with open(os.path.join('/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblateCoaseCorr/nopvt_imageaug_psz64', 'debug_input.pkl'), 'rb') as f:
             #     debug_in = pickle.load(f)
             #     img1_imagenetaug = debug_in['img1_imagenetaug']
             #     img2_imagenetaug = debug_in['img2_imagenetaug']
             #     mask_imagenetaug = debug_in['mask_imagenetaug']
             #     mask_sup = debug_in['mask_sup']
             #
-            # state_dict = torch.load('/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblateCoaseCorr/nopvt_imageaug_psz32/ckpt_epoch_99999999.pth')
+            # state_dict = torch.load('/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblateCoaseCorr/nopvt_imageaug_psz64/ckpt_epoch_99999999.pth')
             # incompactible = model.module.load_state_dict(state_dict['model'], strict=True)
 
 
 
-            raise NotImplementedError()
+
 
         if writer is not None:
             writer.add_scalar('loss', loss, num_steps * epoch + idx)
@@ -331,9 +332,9 @@ if __name__ == '__main__':
     config.freeze()
 
     # linear scale the learning rate according to total batch size, may not be optimal
-    linear_scaled_lr = config.TRAIN.BASE_LR * 2 * args.adjustscaler
-    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * 2 * args.adjustscaler
-    linear_scaled_min_lr = config.TRAIN.MIN_LR * 2 * args.adjustscaler
+    linear_scaled_lr = config.TRAIN.BASE_LR * 2 * args.adjustscaler # 4e-4
+    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * 2 * args.adjustscaler # 2e-6
+    linear_scaled_min_lr = config.TRAIN.MIN_LR * 2 * args.adjustscaler # 2e-5
 
     # gradient accumulation also need to scale the learning rate
     if config.TRAIN.ACCUMULATION_STEPS > 1:
