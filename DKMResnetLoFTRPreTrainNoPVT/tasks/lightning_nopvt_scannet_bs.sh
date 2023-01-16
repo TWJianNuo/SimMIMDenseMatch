@@ -3,7 +3,7 @@
 #SBATCH --time=35:59:00             	# limit of wall clock time - how long the job will run (same as -t)
 #SBATCH --nodes=1                 		# number of different nodes - could be an exact number or a range of nodes (same as -N)
 #SBATCH --ntasks=1                  	# number of tasks - how many tasks (nodes) that you require (same as -n)
-#SBATCH --gres=gpu:a100:2
+#SBATCH --gres=gpu:a100:1
 #SBATCH --cpus-per-task=16           	# number of CPUs (or cores) per task (same as -c)
 #SBATCH --mem-per-cpu=6G            	# memory required per allocated CPU (or core) - amount of memory (in bytes)
 #SBATCH --job-name lightning_nopvt_scannet_bs
@@ -16,9 +16,9 @@ cd /mnt/home/zhusheng/research/SimMIMDenseMatch ### change to the directory wher
 pwd
 source activate SimMIM ### Activate virtual environment
 
-/mnt/home/zhusheng/anaconda3/envs/SimMIM/bin/python -m torch.distributed.launch --nproc_per_node 2 DKMResnetLoFTRPreTrainNoPVT/lightning_nopvt_scannet_bs.py \
+/mnt/home/zhusheng/anaconda3/envs/SimMIM/bin/python -m torch.distributed.launch --nproc_per_node 1 DKMResnetLoFTRPreTrainNoPVT/lightning_nopvt_scannet_bs.py \
 --cfg /mnt/home/zhusheng/research/SimMIMDenseMatch/configs/swin_base__100ep/simmim_pretrain__swin_base__img192_window6__100ep.yaml \
---batch-size 18 \
+--batch-size 36 \
 --data-path /mnt/scratch/zhusheng/EMAwareFlow/ImageNet \
 --data-path-scannet /mnt/scratch/zhusheng/EMAwareFlow/ScanNet \
 --output /mnt/scratch/zhusheng/checkpoints/SimMIMDenseMatch/checkpoints \
