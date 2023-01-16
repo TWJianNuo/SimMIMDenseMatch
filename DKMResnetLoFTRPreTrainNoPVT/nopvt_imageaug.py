@@ -230,6 +230,7 @@ def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr
             grad_norm = get_grad_norm(model.parameters())
 
         valid_gradients, max_tensor = on_after_backward(model, optimizer, logger)
+
         if not valid_gradients:
             print("=============== NAN Detected, Saving ckpt for Debugging... ===============")
             print("Max Img Value: %f, %f, %f" % (img.max().item(), img2.max().item(), torch.sum(mask).item()))
@@ -250,19 +251,26 @@ def train_one_epoch(config, model, data_loader_imagenetaug, optimizer, epoch, lr
                     'mask_sup': mask_imagenetaug_sup.cpu()}, f)
             raise NotImplementedError()
 
-            # with open(os.path.join('/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblateCoaseCorr/nopvt_imageaug_psz64', 'debug_input.pkl'), 'rb') as f:
+            # import pickle
+            # debug_folder = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblateCoaseCorr/'
+            # with open(os.path.join(debug_folder, 'nopvt_imageaug_psz32_bz64', 'debug_input_gpu0.pkl'), 'rb') as f:
             #     debug_in = pickle.load(f)
             #     img1_imagenetaug = debug_in['img1_imagenetaug']
             #     img2_imagenetaug = debug_in['img2_imagenetaug']
             #     mask_imagenetaug = debug_in['mask_imagenetaug']
-            #     mask_sup = debug_in['mask_sup']
+            #     mask_imagenetaug_sup = debug_in['mask_sup']
             #
-            # state_dict = torch.load('/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblateCoaseCorr/nopvt_imageaug_psz64/ckpt_epoch_99999999.pth')
+            # state_dict = torch.load(os.path.join(debug_folder, 'nopvt_imageaug_psz32_bz64', 'ckpt_epoch_99999999.pth'))
             # incompactible = model.module.load_state_dict(state_dict['model'], strict=True)
-
-
-
-
+            #
+            # img1_imagenetaug = img1_imagenetaug.cuda(non_blocking=True)
+            # img2_imagenetaug = img2_imagenetaug.cuda(non_blocking=True)
+            # mask_imagenetaug = mask_imagenetaug.cuda(non_blocking=True)
+            # mask_imagenetaug_sup = mask_imagenetaug_sup.cuda(non_blocking=True)
+            #
+            # with torch.no_grad():
+            #     loss, x_rec = model(img1_imagenetaug, mask_imagenetaug, img2_imagenetaug, mask_imagenetaug_sup)
+            # a = 1
 
         if writer is not None:
             writer.add_scalar('loss', loss, num_steps * epoch + idx)

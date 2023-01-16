@@ -91,4 +91,11 @@ class FullAttention(Module):
 
         queried_values = torch.einsum("nlsh,nshd->nlhd", A, values)
 
+        if torch.sum(torch.isnan(A)) > 0:
+            a = 1
+
+        assert torch.sum(torch.isnan(queries)) == 0
+        assert torch.sum(torch.isnan(QK)) == 0
+        assert torch.sum(torch.isnan(softmax_temp * QK)) == 0
+        assert torch.sum(torch.isnan(A)) == 0
         return queried_values.contiguous()
