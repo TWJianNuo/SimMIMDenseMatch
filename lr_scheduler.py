@@ -23,16 +23,28 @@ def build_scheduler(config, optimizer, n_iter_per_epoch):
 
     lr_scheduler = None
     if config.TRAIN.LR_SCHEDULER.NAME == 'cosine':
-        lr_scheduler = CosineLRScheduler(
-            optimizer,
-            t_initial=num_steps,
-            t_mul=1.,
-            lr_min=config.TRAIN.MIN_LR,
-            warmup_lr_init=config.TRAIN.WARMUP_LR,
-            warmup_t=warmup_steps,
-            cycle_limit=1,
-            t_in_epochs=False,
-        )
+        try:
+            lr_scheduler = CosineLRScheduler(
+                optimizer,
+                t_initial=num_steps,
+                t_mul=1.,
+                lr_min=config.TRAIN.MIN_LR,
+                warmup_lr_init=config.TRAIN.WARMUP_LR,
+                warmup_t=warmup_steps,
+                cycle_limit=1,
+                t_in_epochs=False,
+            )
+        except:
+            lr_scheduler = CosineLRScheduler(
+                optimizer,
+                t_initial=num_steps,
+                lr_min=config.TRAIN.MIN_LR,
+                warmup_lr_init=config.TRAIN.WARMUP_LR,
+                warmup_t=warmup_steps,
+                cycle_limit=1,
+                t_in_epochs=False,
+            )
+
     elif config.TRAIN.LR_SCHEDULER.NAME == 'linear':
         lr_scheduler = LinearLRScheduler(
             optimizer,

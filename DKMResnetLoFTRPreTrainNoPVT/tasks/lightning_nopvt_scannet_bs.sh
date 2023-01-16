@@ -16,8 +16,7 @@ cd /mnt/home/zhusheng/research/EMAwareFlow ### change to the directory where you
 pwd
 source activate SimMIM ### Activate virtual environment
 
-/mnt/home/zhusheng/anaconda3/envs/SimMIM/bin/python -m torch.distributed.launch --nproc_per_node 2 DKMResnetLoFTRPreTrainNoPVT/lightning_nopvt_scannet_bs.py \
---experiment_name lightning_nopvt_scannet_bs \
+CUDA_VISIBLE_DEVICES=2,3 /mnt/home/zhusheng/anaconda3/envs/SimMIM/bin/python -m torch.distributed.launch --nproc_per_node 2 DKMResnetLoFTRPreTrainNoPVT/lightning_nopvt_scannet_bs.py \
 --cfg /mnt/home/zhusheng/research/SimMIMDenseMatch/configs/swin_base__100ep/simmim_pretrain__swin_base__img192_window6__100ep.yaml \
 --batch-size 18 \
 --data-path /mnt/scratch/zhusheng/EMAwareFlow/ImageNet \
