@@ -98,7 +98,8 @@ def main(config):
     # data_loader_train = build_loader_imagenet(config, logger, split="train")
     # data_loader_train_scannet = build_loader_scannet(config, logger)
 
-    imagenet = build_loader_imagenet(config, logger, split="train")
+    # imagenet = build_loader_imagenet(config, logger, split="train")
+    imagenet = build_loader_imagenet(config, logger, split="val")
     scannet = build_loader_scannet(config, logger)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
@@ -219,23 +220,24 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
     start = time.time()
     end = time.time()
     for idx in range(num_steps):
-        imagenet_batch = next(data_loader)
+        # imagenet_batch = next(data_loader)
         scannet_batch = next(data_loader_scannet)
 
-        img_imagenet, mask_imagenet = imagenet_batch
+        # img_imagenet, mask_imagenet = imagenet_batch
         img1_scannetnet, mask_scannet, img2_scannetnet, _ = scannet_batch
 
-        img_imagenet = img_imagenet.cuda(non_blocking=True)
-        mask_imagenet = mask_imagenet.cuda(non_blocking=True)
+        # img_imagenet = img_imagenet.cuda(non_blocking=True)
+        # mask_imagenet = mask_imagenet.cuda(non_blocking=True)
 
         img1_scannetnet = img1_scannetnet.cuda(non_blocking=True)
         img2_scannetnet = img2_scannetnet.cuda(non_blocking=True)
         mask_scannet = mask_scannet.cuda(non_blocking=True)
 
-        loss1, _ = model(img_imagenet, mask_imagenet)
+        # loss1, _ = model(img_imagenet, mask_imagenet)
         loss2, x_rec = model(img1_scannetnet, mask_scannet, img2_scannetnet)
 
-        loss = (loss1 + loss2) / 2
+        # loss = (loss1 + loss2) / 2
+        loss = loss2
 
         img = img1_scannetnet
         mask = mask_scannet
