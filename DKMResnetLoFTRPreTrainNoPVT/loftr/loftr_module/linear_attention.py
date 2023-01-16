@@ -65,6 +65,7 @@ class FullAttention(Module):
         super().__init__()
         self.use_dropout = use_dropout
         self.dropout = Dropout(attention_dropout)
+        self.first = True
 
     def forward(self, queries, keys, values, q_mask=None, kv_mask=None):
         """ Multi-head scaled dot-product attention, a.k.a full attention.
@@ -87,9 +88,10 @@ class FullAttention(Module):
         softmax_temp = 1. / queries.size(3)**.5  # sqrt(D)
         A = torch.softmax(softmax_temp * QK, dim=2)
 
-        if torch.sum(torch.isnan(A)) > 0:
+        if torch.sum(torch.isnan(A)) > 0 or self.first:
             A = torch.softmax((softmax_temp * QK).type(torch.FloatTensor), dim=2)
             A = A.type_as(QK)
+            self.first = False
 
         if self.use_dropout:
             A = self.dropout(A)
