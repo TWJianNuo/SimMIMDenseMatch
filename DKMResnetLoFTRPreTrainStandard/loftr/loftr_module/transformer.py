@@ -19,7 +19,8 @@ class LoFTREncoderLayer(nn.Module):
         self.q_proj = nn.Linear(d_model, d_model, bias=False)
         self.k_proj = nn.Linear(d_model, d_model, bias=False)
         self.v_proj = nn.Linear(d_model, d_model, bias=False)
-        self.attention = LinearAttention() if attention == 'linear' else FullAttention()
+        # self.attention = LinearAttention() if attention == 'linear' else FullAttention()
+        self.attention = FullAttention()
         self.merge = nn.Linear(d_model, d_model, bias=False)
 
         # feed-forward network
