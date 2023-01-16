@@ -86,8 +86,11 @@ class FullAttention(Module):
         # Compute the attention and the weighted average
         softmax_temp = 1. / queries.size(3)**.5  # sqrt(D)
         A = torch.softmax(softmax_temp * QK, dim=2)
-        # A = torch.softmax((softmax_temp * QK).type(torch.FloatTensor), dim=2)
-        # A = A.type_as(QK)
+
+        if torch.sum(torch.isnan(A)) > 0:
+            A = torch.softmax((softmax_temp * QK).type(torch.FloatTensor), dim=2)
+            A = A.type_as(QK)
+
         if self.use_dropout:
             A = self.dropout(A)
         queried_values = torch.einsum("nlsh,nshd->nlhd", A, values)
