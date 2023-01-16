@@ -92,7 +92,8 @@ class ScanNetScene:
         img1, mask1 = self.transform(img1)
         img2, mask2 = self.transform(img2)
 
-        return {'img1': img1, 'mask1': mask1, 'img2': img2, 'mask2': mask2}
+        # return {'img1': img1, 'mask1': mask1, 'img2': img2, 'mask2': mask2}
+        return img1, mask1, img2, mask2
 
 class ScanNetBuilder:
     def __init__(self, data_root='data/scannet', debug=False, progress_bar=False, minoverlap=0.0) -> None:

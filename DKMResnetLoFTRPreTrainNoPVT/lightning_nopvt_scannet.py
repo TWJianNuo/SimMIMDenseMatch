@@ -29,7 +29,6 @@ from optimizer import build_optimizer
 from lr_scheduler import build_scheduler
 from tools.tools import tensor2rgb, tensor2disp
 from data.data_simmim_mega import build_loader_imagenet
-from data.data_simmim_scannet_twoview import build_loader_scannet
 from utils import load_checkpoint, save_checkpoint, get_grad_norm, auto_resume_helper
 
 from timm.utils import AverageMeter
@@ -144,7 +143,7 @@ def main(config):
         scannet_sampler = DistributedSampler(scannet, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
         scannet_sampler.set_epoch(int(epoch))
         data_loader_train_scannet = DataLoader(scannet, config.DATA.BATCH_SIZE, sampler=scannet_sampler, num_workers=config.DATA.NUM_WORKERS,
-                                pin_memory=True, drop_last=True)
+                                pin_memory=True, drop_last=True, collate_fn=collate_fn)
         data_loader_train_scannet = iter(data_loader_train_scannet)
 
         train_one_epoch(config, model, None, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer)
@@ -206,9 +205,11 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
     end = time.time()
     for idx in range(num_steps):
         scannet_batch = next(data_loader_scannet)
-        img1_scannet = scannet_batch['img1']
-        mask_scannet = scannet_batch['mask1']
-        img2_scannet = scannet_batch['img2']
+        # img1_scannet = scannet_batch['img1']
+        # mask_scannet = scannet_batch['mask1']
+        # img2_scannet = scannet_batch['img2']
+
+        img1_scannet, mask_scannet, img2_scannet, _ = scannet_batch
 
         img1_scannet = img1_scannet.cuda(non_blocking=True)
         img2_scannet = img2_scannet.cuda(non_blocking=True)
