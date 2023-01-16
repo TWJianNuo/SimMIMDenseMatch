@@ -173,11 +173,12 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
 
         img1_scannet, mask_scannet, img2_scannet, _ = scannet_batch
 
+        img2_scannet = img1_scannet
         img1_scannet = img1_scannet.cuda(non_blocking=True)
         img2_scannet = img2_scannet.cuda(non_blocking=True)
         mask_scannet = mask_scannet.cuda(non_blocking=True)
 
-        loss2, x_rec = model(img1_scannet, mask_scannet, img1_scannet, mask_scannet)
+        loss2, x_rec = model(img1_scannet, mask_scannet, img2_scannet)
 
         loss = loss2
 
