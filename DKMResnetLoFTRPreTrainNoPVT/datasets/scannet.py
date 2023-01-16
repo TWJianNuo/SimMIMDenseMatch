@@ -8,6 +8,7 @@ from tqdm import tqdm
 
 import copy
 import torchvision.transforms as T
+from loguru import logger
 from torch.utils.data import ConcatDataset
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.models.layers import to_2tuple
@@ -195,6 +196,7 @@ class SimMIMTransform:
             model_patch_size=model_patch_size,
             mask_ratio=config.DATA.MASK_RATIO_SCANNET,
         )
+        logger.info("Mask Patch Size %d, ratio %f" % (config.DATA.MASK_PATCH_SIZE, config.DATA.MASK_RATIO_SCANNET))
 
     def __call__(self, img, idx=None, validmask=None):
         transform_img = T.Compose([

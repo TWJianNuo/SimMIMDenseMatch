@@ -28,7 +28,6 @@ from logger import create_logger
 from optimizer import build_optimizer
 from lr_scheduler import build_scheduler
 from tools.tools import tensor2rgb, tensor2disp
-from data.data_simmim_mega import build_loader_imagenet
 from utils import load_checkpoint, save_checkpoint, get_grad_norm, auto_resume_helper
 
 from timm.utils import AverageMeter
@@ -69,6 +68,9 @@ def parse_option():
     parser.add_argument('--tag', help='tag of experiment')
     parser.add_argument('--adjustscaler', type=float, default=1.0)
     parser.add_argument('--usefullattention', action='store_true')
+
+    parser.add_argument('--mask-patch-size', type=int, default=32)
+    parser.add_argument('--mask-ratio-scannet', type=float, default=0.85)
 
     # distributed training
     parser.add_argument("--local_rank", type=int, required=False, help='local rank for DistributedDataParallel')
@@ -154,43 +156,6 @@ def main(config):
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     logger.info('Training time {}'.format(total_time_str))
-
-@torch.no_grad()
-def eval(model, eval_step, config, writer):
-    model.eval()
-    imagenet_val = build_loader_imagenet(config, logger, split="val", drop_last=True)
-
-    imagenet_sampler = DistributedSampler(imagenet_val, num_replicas=dist.get_world_size(), rank=dist.get_rank(),
-                                          shuffle=True)
-    data_loader = DataLoader(imagenet_val, config.DATA.BATCH_SIZE, sampler=imagenet_sampler,
-                             num_workers=config.DATA.NUM_WORKERS,
-                             pin_memory=True, drop_last=True, collate_fn=collate_fn)
-
-    logger.info('Dataset Length {}, BatchSize {}'.format(len(data_loader), config.DATA.BATCH_SIZE))
-
-    loss_l1 = 0
-    tot_pxl = 0
-    for _, (img, mask) in enumerate(tqdm.tqdm(data_loader)):
-        img = img.cuda(non_blocking=True)
-        mask = mask.cuda(non_blocking=True)
-
-        loss, rgb_recon = model(img, mask)
-
-        patch_sizeh = int(img.shape[2] / mask.shape[1])
-        patch_sizew = int(img.shape[3] / mask.shape[2])
-        assert patch_sizeh == patch_sizew
-        mask = mask.repeat_interleave(patch_sizeh, 1).repeat_interleave(patch_sizew, 2).unsqueeze(1).contiguous()
-
-        in_chans = 3
-        loss_recon = F.l1_loss(img, rgb_recon, reduction='none')
-
-        loss_l1 += (loss_recon * mask).sum() / in_chans
-        tot_pxl += mask.sum()
-
-    loss_l1 = loss_l1 / tot_pxl
-    if config.LOCAL_RANK == 0:
-        logger.info('Eval L1 {} at step {}'.format(loss_l1.item(), eval_step))
-        writer.add_scalar('Eval/L1', loss_l1, eval_step)
 
 def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, epoch, lr_scheduler, writer):
     model.train()
@@ -316,11 +281,13 @@ if __name__ == '__main__':
     config.defrost()
     config.DATA.IMG_SIZE = (160, 192)  # 192
     config['DATA']['MASK_RATIO'] = 0.75
-    config['DATA']['MASK_RATIO_SCANNET'] = 0.85
     config['DATA']['DATA_PATH_SCANNET'] = args.data_path_scannet
     config['DATA']['MINOVERLAP_SCANNET'] = args.minoverlap_scannet
     config['MODEL']['SWIN']['PATCH_SIZE'] = 2
     config['MODEL']['VIT']['PATCH_SIZE'] = 2
+
+    config['DATA']['MASK_RATIO_SCANNET'] = args.mask_ratio_scannet
+    config['DATA']['MASK_PATCH_SIZE'] = args.mask_patch_size
     config.freeze()
 
     if config.AMP_OPT_LEVEL != "O0":
