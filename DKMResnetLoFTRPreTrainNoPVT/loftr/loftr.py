@@ -82,7 +82,6 @@ class LoFTR(nn.Module):
         loss = loss + loss2 * 0.05
         return loss, rgb_recon
 
-
 class LoFTRBS(nn.Module):
     def __init__(self, config, outputfeature='concatenated'):
         super().__init__()
@@ -91,11 +90,13 @@ class LoFTRBS(nn.Module):
 
         # Modules
         self.backbone = build_backbone(config)
+        self.pos_encoding = PositionEncodingSine(config['coarse']['d_model'])
+        self.loftr_coarse = LocalFeatureTransformer(config['coarse'])
 
         self.outputfeature = outputfeature
         assert self.outputfeature in ['transformer', 'fpn', 'concatenated']
 
-        self.out_conv = nn.Sequential(
+        self.out_conv_pair = nn.Sequential(
             nn.Conv2d(
                 in_channels=320,
                 out_channels=8 ** 2 * 3,
@@ -114,7 +115,23 @@ class LoFTRBS(nn.Module):
             }
         """
         feats_c = self.backbone(img, mask)
-        rgb_recon = self.out_conv(feats_c)
+
+        if img2 is not None:
+            feats_c1 = self.backbone(img, mask)
+
+            n, c, h, w = feats_c.shape
+
+            feats_c = rearrange(self.pos_encoding(feats_c), 'n c h w -> n (h w) c')
+            feats_c1 = rearrange(self.pos_encoding(feats_c1), 'n c h w -> n (h w) c')
+
+            feats_c, feats_c1 = self.loftr_coarse(feats_c, feats_c1)
+
+            feats_c = rearrange(feats_c, 'n (h w) c -> n c h w', h=h, w=w)
+            feats_c1 = rearrange(feats_c1, 'n (h w) c -> n c h w', h=h, w=w)
+
+            rgb_recon = self.out_conv_pair(feats_c)
+        else:
+            rgb_recon = self.out_conv(feats_c)
 
         patch_sizeh = int(img.shape[2] / mask.shape[1])
         patch_sizew = int(img.shape[3] / mask.shape[2])
@@ -130,4 +147,8 @@ class LoFTRBS(nn.Module):
         mask_pos = mask * masksup.unsqueeze(1)
 
         loss = (loss_recon * mask_pos).sum() / (mask_pos.sum() + 1e-5) / in_chans
+
+        mask_neg = (1 - mask)
+        loss2 = (loss_recon * mask_neg).sum() / (mask_neg.sum() + 1e-5) / in_chans
+        loss = loss + loss2 * 0.05
         return loss, rgb_recon
