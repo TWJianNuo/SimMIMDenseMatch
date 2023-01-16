@@ -282,6 +282,9 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
             img_vls = img * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
                 [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
                 [1, 3, 1, 1]).cuda().float()
+            img2_vls = img2_scannetnet * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
+                [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
+                [1, 3, 1, 1]).cuda().float()
             rec_vls = x_rec * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
                 [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
                 [1, 3, 1, 1]).cuda().float()
@@ -289,9 +292,10 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
             b, _, h, w = img.shape
 
             vls1 = tensor2rgb(img_vls)
+            vls4 = tensor2rgb(img2_vls)
             vls2 = tensor2rgb(rec_vls)
             vls3 = tensor2disp(F.interpolate(mask.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
-            vls = np.concatenate([vls1, vls2, vls3], axis=0)
+            vls = np.concatenate([vls1, vls4, vls2, vls3], axis=0)
 
             writer.add_image('visualization', (torch.from_numpy(vls).float() / 255).permute([2, 0, 1]), num_steps * epoch + idx)
 
