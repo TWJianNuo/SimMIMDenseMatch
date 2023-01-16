@@ -12,7 +12,7 @@
 #SBATCH --mail-user zhusheng@msu.edu
 ########## Command Lines to Run ##########
 bash
-cd /mnt/home/zhusheng/research/EMAwareFlow ### change to the directory where your code is located
+cd /mnt/home/zhusheng/research/SimMIMDenseMatch ### change to the directory where your code is located
 pwd
 source activate SimMIM ### Activate virtual environment
 
