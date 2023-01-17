@@ -69,6 +69,9 @@ def parse_option():
     parser.add_argument('--adjustscaler', type=float, default=1.0)
     parser.add_argument('--usefullattention', action='store_true')
 
+    parser.add_argument('--mask-patch-size', type=int, default=32)
+    parser.add_argument('--mask-ratio-scannet', type=float, default=0.85)
+
     # distributed training
     parser.add_argument("--local_rank", type=int, required=False, help='local rank for DistributedDataParallel')
 
@@ -279,11 +282,13 @@ if __name__ == '__main__':
     config.defrost()
     config.DATA.IMG_SIZE = (160, 192)  # 192
     config['DATA']['MASK_RATIO'] = 0.75
-    config['DATA']['MASK_RATIO_SCANNET'] = 0.85
     config['DATA']['DATA_PATH_SCANNET'] = args.data_path_scannet
     config['DATA']['MINOVERLAP_SCANNET'] = args.minoverlap_scannet
     config['MODEL']['SWIN']['PATCH_SIZE'] = 2
     config['MODEL']['VIT']['PATCH_SIZE'] = 2
+
+    config['DATA']['MASK_RATIO_SCANNET'] = args.mask_ratio_scannet
+    config['DATA']['MASK_PATCH_SIZE'] = args.mask_patch_size
     config.freeze()
 
     if config.AMP_OPT_LEVEL != "O0":
