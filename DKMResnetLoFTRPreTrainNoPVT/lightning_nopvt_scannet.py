@@ -67,7 +67,7 @@ def parse_option():
                         help='root of output folder, the full path is <output>/<model_name>/<tag> (default: output)')
     parser.add_argument('--tag', help='tag of experiment')
     parser.add_argument('--adjustscaler', type=float, default=1.0)
-    parser.add_argument('--usefullattention', action='store_true')
+    parser.add_argument('--uselinearattention', action='store_true')
 
     parser.add_argument('--mask-patch-size', type=int, default=32)
     parser.add_argument('--mask-ratio-scannet', type=float, default=0.85)
@@ -99,7 +99,7 @@ def main(config):
     scannet = build_loader_scannet(config, logger)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
-    model = DKMv2()
+    model = DKMv2(uselinearattention=args.uselinearattention)
     model.cuda()
     logger.info(str(model))
 
