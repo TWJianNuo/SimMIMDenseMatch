@@ -19,6 +19,7 @@ def DKMv2(uselinearattention=False):
     # Init LoFTR
     _default_cfg = deepcopy(default_cfg)
     _default_cfg['resnetfpn']['IMG_SIZE'] = (h, w)
+    _default_cfg['resnetfpn']['two_bn'] = True
     _default_cfg['coarse']['d_model'] = 320
 
     if uselinearattention:

@@ -38,6 +38,7 @@ from DKMResnetLoFTRPreTrainNoPVT.datasets.scannet import build_loader_scannet
 
 try:
     # noinspection PyUnresolvedReferences
+    import apex
     from apex import amp
 except ImportError:
     amp = None
@@ -106,6 +107,7 @@ def main(config):
     optimizer = build_optimizer(config, model, logger, is_pretrain=True)
     if config.AMP_OPT_LEVEL != "O0":
         model, optimizer = amp.initialize(model, optimizer, opt_level=config.AMP_OPT_LEVEL)
+        model = apex.parallel.convert_syncbn_model(model)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False)
     model_without_ddp = model.module
 

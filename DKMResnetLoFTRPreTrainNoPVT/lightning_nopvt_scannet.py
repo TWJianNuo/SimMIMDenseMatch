@@ -38,6 +38,7 @@ from DKMResnetLoFTRPreTrainNoPVT.datasets.scannet import build_loader_scannet
 
 try:
     # noinspection PyUnresolvedReferences
+    import apex
     from apex import amp
 except ImportError:
     amp = None
@@ -106,6 +107,7 @@ def main(config):
     optimizer = build_optimizer(config, model, logger, is_pretrain=True)
     if config.AMP_OPT_LEVEL != "O0":
         model, optimizer = amp.initialize(model, optimizer, opt_level=config.AMP_OPT_LEVEL)
+        model = apex.parallel.convert_syncbn_model(model)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False)
     model_without_ddp = model.module
 
@@ -151,7 +153,6 @@ def main(config):
         train_one_epoch(config, model, None, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer)
         if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
-
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
