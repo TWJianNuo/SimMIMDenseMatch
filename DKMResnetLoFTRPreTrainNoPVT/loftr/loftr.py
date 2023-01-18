@@ -39,7 +39,11 @@ class LoFTR(nn.Module):
                 'mask1'(optional) : (torch.Tensor): (N, H, W)
             }
         """
+        # Change to Evaluation Mode for Batch Statistics
+        mode = self.training
+        self.backbone.eval()
         feats_c = self.backbone(img, mask)
+        self.backbone.train(mode)
 
         if img2 is not None:
             feats_c1 = self.backbone(img2, torch.zeros_like(mask))

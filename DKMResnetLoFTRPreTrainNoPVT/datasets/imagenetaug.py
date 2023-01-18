@@ -415,8 +415,6 @@ class ImangeNetAug:
             lines = [line.rstrip() for line in file]
         self.image_paths = lines
 
-        self.image_paths = self.image_paths[0:int(len(self.image_paths) / 2)]
-
         if homography_augmentation:
             logger.info("Enable Homography Augmentation with Scale %f" % auscale)
         else:
