@@ -98,6 +98,7 @@ def collate_fn(batch):
 
 def main(config):
     scannet = build_loader_scannet(config, logger)
+    logger.info(f"The Length of ScanNet is %d {scannet.__len__()}")
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     model = DKMv2wconf(uselinearattention=args.uselinearattention)
