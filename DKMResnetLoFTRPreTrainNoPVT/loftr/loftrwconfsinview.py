@@ -32,11 +32,6 @@ class LoFTRWConfSinview(nn.Module):
         self.out_conv_pair_refiner = nn.Sequential(
             nn.Conv2d(
                 in_channels=640,
-                out_channels=320,
-                kernel_size=1),
-            nn.ReLU(),
-            nn.Conv2d(
-                in_channels=320,
                 out_channels=8 ** 2 * (3 + 1),
                 kernel_size=1),
             nn.PixelShuffle(8),
@@ -92,15 +87,22 @@ class LoFTRWConfSinview(nn.Module):
         loss = loss + loss2 * 0.05
 
         # Additional Stuff
+        bz, ch, h, w = feats_c.shape
+        feats_c = rearrange(feats_c, 'n c h w -> n (h w) c')
+        feats_c1 = rearrange(feats_c1, 'n c h w -> n (h w) c')
         sim_matrix = torch.einsum("nlc,nsc->nls", feats_c, feats_c1) / self.temperature
         A = torch.softmax(sim_matrix, dim=2)
         if torch.sum(torch.isnan(A)) > 0:
             A = torch.softmax(sim_matrix.type(torch.FloatTensor), dim=2)
             A = A.type_as(feats_c)
 
-        bz, ch, h, w = feats_c.shape
+        feats_c1 = rearrange(feats_c1, 'n (h w) c -> n c h w', h=h, w=w)
         f2_scale8_aligned = A.view([bz, 1, h*w, h*w]) @ feats_c1.view([bz, ch, h*w, 1])
         f2_scale8_aligned = f2_scale8_aligned.view([bz, ch, h, w])
+        f2_scale8_aligned = rearrange(f2_scale8_aligned, 'n c h w -> n (h w) c')
+
+        feats_c = rearrange(feats_c, 'n (h w) c -> n c h w', h=h, w=w, c=c)
+        f2_scale8_aligned = rearrange(f2_scale8_aligned, 'n (h w) c -> n c h w', h=h, w=w, c=c)
 
         catted = torch.cat([feats_c, f2_scale8_aligned], dim=1)
         d = self.out_conv_pair_refiner(catted)
