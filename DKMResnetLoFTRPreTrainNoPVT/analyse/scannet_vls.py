@@ -175,7 +175,7 @@ class SimMIMTransform:
         transform_img = T.Compose([
             T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
             T.RandomResizedCrop(self.config.DATA.IMG_SIZE, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.)),
-            T.RandomHorizontalFlip(),
+            # T.RandomHorizontalFlip(),
             T.ToTensor(),
             T.Normalize(mean=torch.tensor(IMAGENET_DEFAULT_MEAN), std=torch.tensor(IMAGENET_DEFAULT_STD)),
         ])

@@ -40,9 +40,13 @@ class LoFTR(nn.Module):
             }
         """
         # Change to Evaluation Mode for Batch Statistics
+        mode = self.training
+        self.backbone.train()
         feats_c = self.backbone(img, mask, maskedin=True)
+        self.backbone.train(mode)
 
         if img2 is not None:
+
             feats_c1 = self.backbone(img2, torch.zeros_like(mask), maskedin=False)
 
             n, c, h, w = feats_c.shape
@@ -82,6 +86,25 @@ class LoFTR(nn.Module):
         loss2 = (loss_recon * mask_neg).sum() / (mask_neg.sum() + 1e-5) / in_chans
         loss = loss + loss2 * 0.05
         return loss, rgb_recon
+
+    def extrac_feature(self, img, img2):
+        # Change to Evaluation Mode for Batch Statistics
+        n, c, h, w = img.shape
+        mask = torch.zeros([n, int(h / 2), int(w / 2)], device=img.device)
+        feats_c = self.backbone(img, mask, maskedin=False)
+        feats_c1 = self.backbone(img2, mask, maskedin=False)
+
+        n, c, h, w = feats_c.shape
+
+        feats_c = rearrange(self.pos_encoding(feats_c), 'n c h w -> n (h w) c')
+        feats_c1 = rearrange(self.pos_encoding(feats_c1), 'n c h w -> n (h w) c')
+
+        feats_c, feats_c1 = self.loftr_coarse(feats_c, feats_c1)
+
+        feats_c = rearrange(feats_c, 'n (h w) c -> n c h w', h=h, w=w)
+        feats_c1 = rearrange(feats_c1, 'n (h w) c -> n c h w', h=h, w=w)
+
+        return feats_c, feats_c1
 
 class LoFTRBS(nn.Module):
     def __init__(self, config, outputfeature='concatenated'):

@@ -78,10 +78,10 @@ def main(config):
     data_loader_train_scannet = DataLoader(scannet, 1, num_workers=0, pin_memory=True, drop_last=True, shuffle=False)
     data_loader_train_scannet = iter(data_loader_train_scannet)
 
-    ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblateCoaseCorr/lightning_nopvt_scannet/ckpt_epoch_20.pth'
+    ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblatePretrain/lightning_nopvt_scannet_pz4_p099_dm/ckpt_epoch_40.pth'
     ckpt = torch.load(ckpt_path, map_location='cpu')
     incompactible = model.load_state_dict(ckpt['model'], strict=True)
-    model.train()
+    model.eval()
 
     scannet_batch = next(data_loader_train_scannet)
 
