@@ -98,7 +98,8 @@ class LoFTRWConf(nn.Module):
         feats_c_unmasked = rearrange(self.pos_encoding(feats_c_unmasked), 'n c h w -> n (h w) c')
         feats_c_unmaskedQ, feats_c1Q = self.loftr_coarse(feats_c_unmasked, feats_c1)
 
-        feats_c_unmaskedQ, feats_c1Q = map(lambda feat: feat / feat.shape[-1] ** .5, [feats_c_unmaskedQ, feats_c1Q])
+        feats_c_unmaskedQ = F.normalize(feats_c_unmaskedQ, p=2, dim=2)
+        feats_c1Q = F.normalize(feats_c1Q, p=2, dim=2)
         sim_matrix = torch.einsum("nlc,nsc->nls", feats_c_unmaskedQ, feats_c1Q) / self.temperature
         A = torch.softmax(sim_matrix, dim=2)
 
