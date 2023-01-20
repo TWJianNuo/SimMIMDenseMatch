@@ -151,22 +151,9 @@ def main(config):
                                 pin_memory=True, drop_last=True, collate_fn=collate_fn)
         data_loader_train_scannet = iter(data_loader_train_scannet)
 
-        num_steps = 5000
-        for idx in range(num_steps):
-            scannet_batch = next(data_loader_train_scannet)
-
-            img1_scannet, mask_scannet, img2_scannet, _ = scannet_batch
-
-            img1_scannet = img1_scannet.cuda(non_blocking=True)
-            img2_scannet = img2_scannet.cuda(non_blocking=True)
-            mask_scannet = mask_scannet.cuda(non_blocking=True)
-
-            if idx % config.PRINT_FREQ == 0:
-                logger.info(f'Train: [{epoch}/{config.TRAIN.EPOCHS}][{idx}/{num_steps}]\t')
-
-        # train_one_epoch(config, model, None, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer)
-        # if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
-        #     save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
+        train_one_epoch(config, model, None, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer)
+        if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
+            save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
