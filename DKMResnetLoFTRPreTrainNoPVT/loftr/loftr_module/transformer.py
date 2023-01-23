@@ -48,14 +48,12 @@ class LoFTREncoderLayer(nn.Module):
 
         # multi-head attention
         if detach_left:
-            print("11111asfafafsa-----")
             with torch.no_grad():
                 query = self.q_proj(query).view(bs, -1, self.nhead, self.dim).float()  # [N, L, (H, D)]
         else:
             query = self.q_proj(query).view(bs, -1, self.nhead, self.dim).float()  # [N, L, (H, D)]
 
         if detach_right:
-            print("2222asfafafsa-----")
             with torch.no_grad():
                 key = self.k_proj(key).view(bs, -1, self.nhead, self.dim).float()  # [N, S, (H, D)]
                 value = self.v_proj(value).view(bs, -1, self.nhead, self.dim).float()
@@ -69,7 +67,6 @@ class LoFTREncoderLayer(nn.Module):
 
         # feed-forward network
         if detach_left:
-            print("333333asfafafsa-----")
             x = x.detach()
 
         message = self.mlp(torch.cat([x, message], dim=2))
