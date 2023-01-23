@@ -80,15 +80,17 @@ class LoFTRWConf(nn.Module):
         feats1_mask__ = rearrange(feats1_mask_, 'n (h w) c -> n c h w', h=h, w=w)
         recon_initial = self.out_conv_pair(feats1_mask__)
 
+
         patch_sizeh = int(img1.shape[2] / mask1.shape[1])
         patch_sizew = int(img1.shape[3] / mask1.shape[2])
         assert patch_sizeh == patch_sizew
         mask1 = mask1.repeat_interleave(patch_sizeh, 1).repeat_interleave(patch_sizew, 2).unsqueeze(1).contiguous()
 
+        stlayer = np.random.randint(0, 4)
         if np.random.uniform(0, 1) > 0.5:
-            feats1_, feats2_ = self.loftr_coarse(feats1, feats2, None, None, detach_left=True, detach_right=False)
+            feats1_, feats2_ = self.loftr_coarse.forward_onelayer(feats1, feats2, None, None, detach_left=True, detach_right=False, stlayer=stlayer)
         else:
-            feats2_, feats1_ = self.loftr_coarse(feats2, feats1, None, None, detach_left=False, detach_right=True)
+            feats2_, feats1_ = self.loftr_coarse.forward_onelayer(feats2, feats1, None, None, detach_left=False, detach_right=True, stlayer=stlayer)
 
         sim_matrix = torch.einsum("nlc,nsc->nls", feats1_, feats2_) / self.temperature
         A = torch.softmax(sim_matrix, dim=2)

@@ -90,6 +90,9 @@ class LocalFeatureTransformer(nn.Module):
         self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(len(self.layer_names))])
         self._reset_parameters()
 
+        for layer, name in zip(self.layers, self.layer_names):
+            print(name)
+
     def _reset_parameters(self):
         for p in self.parameters():
             if p.dim() > 1:
@@ -107,6 +110,39 @@ class LocalFeatureTransformer(nn.Module):
         assert self.d_model == feat0.size(2), "the feature number of src and transformer must be equal"
 
         for layer, name in zip(self.layers, self.layer_names):
+            if name == 'self':
+                if detach_left:
+                    with torch.no_grad():
+                        feat0 = layer(feat0, feat0, mask0, mask0)
+                else:
+                    feat0 = layer(feat0, feat0, mask0, mask0)
+                if detach_right:
+                    with torch.no_grad():
+                        feat1 = layer(feat1, feat1, mask1, mask1)
+                else:
+                    feat1 = layer(feat1, feat1, mask1, mask1)
+            elif name == 'cross':
+                feat0 = layer(feat0, feat1, mask0, mask1, detach_left, detach_right)
+                feat1 = layer(feat1, feat0, mask1, mask0, detach_left, detach_right)
+            else:
+                raise KeyError
+
+        return feat0, feat1
+
+    def forward_onelayer(self, feat0, feat1, mask0=None, mask1=None, detach_left=False, detach_right=False, stlayer=0):
+        """
+        Args:
+            feat0 (torch.Tensor): [N, L, C]
+            feat1 (torch.Tensor): [N, S, C]
+            mask0 (torch.Tensor): [N, L] (optional)
+            mask1 (torch.Tensor): [N, S] (optional)
+        """
+
+        assert self.d_model == feat0.size(2), "the feature number of src and transformer must be equal"
+
+        st_indx = stlayer * 2
+        ed_indx = (stlayer + 1) * 2
+        for layer, name in zip(self.layers[st_indx: ed_indx], self.layer_names[st_indx: ed_indx]):
             if name == 'self':
                 if detach_left:
                     with torch.no_grad():
