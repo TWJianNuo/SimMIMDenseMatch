@@ -36,7 +36,7 @@ from timm.utils import AverageMeter
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 # from DKMResnetLoFTRPreTrainNoPVT.models.build_model import DKMv2
-# from DKMResnetLoFTRPreTrainNoPVT.models.build_modelwconf import DKMv2wconf
+from DKMResnetLoFTRPreTrainNoPVT.models.build_modelwconf import DKMv2wconf
 from DKMResnetLoFTRPreTrainNoPVT.models.build_modelwconf_sinview import DKMv2wconfSinView
 from DKMResnetLoFTRPreTrainNoPVT.datasets.imagenetaug import build_loader_imagenetaug
 
@@ -108,7 +108,7 @@ def main(gpu, config, args):
     imagenetaug = build_loader_imagenetaug(config)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
-    model = DKMv2wconfSinView()
+    model = DKMv2wconf()
     model.cuda()
     logger.info(str(model))
 

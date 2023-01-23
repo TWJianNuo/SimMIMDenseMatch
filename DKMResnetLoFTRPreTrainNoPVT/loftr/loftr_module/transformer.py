@@ -1,7 +1,7 @@
 import copy
 import torch
 import torch.nn as nn
-from .linear_attention import LinearAttention, FullAttention
+from .linear_attention import FullAttention
 from loguru import logger
 
 
@@ -35,7 +35,7 @@ class LoFTREncoderLayer(nn.Module):
 
         logger.info("Linear Attention") if attention == 'linear' else logger.info("Full Attention")
 
-    def forward(self, x, source, x_mask=None, source_mask=None):
+    def forward(self, x, source, x_mask=None, source_mask=None, detach_left=False, detach_right=False):
         """
         Args:
             x (torch.Tensor): [N, L, C]
@@ -47,18 +47,36 @@ class LoFTREncoderLayer(nn.Module):
         query, key, value = x, source, source
 
         # multi-head attention
-        query = self.q_proj(query).view(bs, -1, self.nhead, self.dim).float()  # [N, L, (H, D)]
-        key = self.k_proj(key).view(bs, -1, self.nhead, self.dim).float()  # [N, S, (H, D)]
-        value = self.v_proj(value).view(bs, -1, self.nhead, self.dim).float()
-        message = self.attention(query, key, value, q_mask=x_mask, kv_mask=source_mask)  # [N, L, (H, D)]
+        if detach_left:
+            print("11111asfafafsa-----")
+            with torch.no_grad():
+                query = self.q_proj(query).view(bs, -1, self.nhead, self.dim).float()  # [N, L, (H, D)]
+        else:
+            query = self.q_proj(query).view(bs, -1, self.nhead, self.dim).float()  # [N, L, (H, D)]
+
+        if detach_right:
+            print("2222asfafafsa-----")
+            with torch.no_grad():
+                key = self.k_proj(key).view(bs, -1, self.nhead, self.dim).float()  # [N, S, (H, D)]
+                value = self.v_proj(value).view(bs, -1, self.nhead, self.dim).float()
+        else:
+            key = self.k_proj(key).view(bs, -1, self.nhead, self.dim).float()  # [N, S, (H, D)]
+            value = self.v_proj(value).view(bs, -1, self.nhead, self.dim).float()
+
+        message = self.attention(query, key, value, q_mask=x_mask, kv_mask=source_mask, detach_left=detach_left, detach_right=detach_right)  # [N, L, (H, D)]
         message = self.merge(message.view(bs, -1, self.nhead*self.dim))  # [N, L, C]
         message = self.norm1(message)
 
         # feed-forward network
+        if detach_left:
+            print("333333asfafafsa-----")
+            x = x.detach()
+
         message = self.mlp(torch.cat([x, message], dim=2))
         message = self.norm2(message)
+        y = x + message
 
-        return x + message
+        return y
 
 
 class LocalFeatureTransformer(nn.Module):
@@ -80,7 +98,7 @@ class LocalFeatureTransformer(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, feat0, feat1, mask0=None, mask1=None):
+    def forward(self, feat0, feat1, mask0=None, mask1=None, detach_left=False, detach_right=False):
         """
         Args:
             feat0 (torch.Tensor): [N, L, C]
@@ -93,11 +111,19 @@ class LocalFeatureTransformer(nn.Module):
 
         for layer, name in zip(self.layers, self.layer_names):
             if name == 'self':
-                feat0 = layer(feat0, feat0, mask0, mask0)
-                feat1 = layer(feat1, feat1, mask1, mask1)
+                if detach_left:
+                    with torch.no_grad():
+                        feat0 = layer(feat0, feat0, mask0, mask0)
+                else:
+                    feat0 = layer(feat0, feat0, mask0, mask0)
+                if detach_right:
+                    with torch.no_grad():
+                        feat1 = layer(feat1, feat1, mask1, mask1)
+                else:
+                    feat1 = layer(feat1, feat1, mask1, mask1)
             elif name == 'cross':
-                feat0 = layer(feat0, feat1, mask0, mask1)
-                feat1 = layer(feat1, feat0, mask1, mask0)
+                feat0 = layer(feat0, feat1, mask0, mask1, detach_left, detach_right)
+                feat1 = layer(feat1, feat0, mask1, mask0, detach_left, detach_right)
             else:
                 raise KeyError
 

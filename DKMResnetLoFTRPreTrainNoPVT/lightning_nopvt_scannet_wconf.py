@@ -172,9 +172,6 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
     end = time.time()
     for idx in range(num_steps):
         scannet_batch = next(data_loader_scannet)
-        # img1_scannet = scannet_batch['img1']
-        # mask_scannet = scannet_batch['mask1']
-        # img2_scannet = scannet_batch['img2']
 
         img1_scannet, mask_scannet, img2_scannet, _ = scannet_batch
 
@@ -182,9 +179,7 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
         img2_scannet = img2_scannet.cuda(non_blocking=True)
         mask_scannet = mask_scannet.cuda(non_blocking=True)
 
-        loss2, x_rec, x_rec_refined, reliability = model(img1_scannet, mask_scannet, img2_scannet)
-
-        loss = loss2
+        loss, x_rec, x_rec_refined, reliability = model(img1_scannet, mask_scannet, img2_scannet)
 
         img = img1_scannet
         mask = mask_scannet
@@ -256,7 +251,6 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
             img2_vls = img2_scannet * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
                 [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
                 [1, 3, 1, 1]).cuda().float()
-
 
             rec_vls = x_rec * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
                 [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(

@@ -54,7 +54,7 @@ class LoFTR(nn.Module):
             feats_c = rearrange(self.pos_encoding(feats_c), 'n c h w -> n (h w) c')
             feats_c1 = rearrange(self.pos_encoding(feats_c1), 'n c h w -> n (h w) c')
 
-            feats_c, feats_c1 = self.loftr_coarse(feats_c, feats_c1)
+            feats_c, feats_c1 = self.loftr_coarse(feats_c, feats_c1, None, None, False, False)
 
             feats_c = rearrange(feats_c, 'n (h w) c -> n c h w', h=h, w=w)
             feats_c1 = rearrange(feats_c1, 'n (h w) c -> n c h w', h=h, w=w)
