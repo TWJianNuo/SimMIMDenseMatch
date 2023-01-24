@@ -93,7 +93,7 @@ class ScanNetScene:
             h, w, ch = np.array(im_src).shape
             im_pos_ref = np.random.randint(0, 255, h*w*ch)
             im_pos_ref = np.reshape(im_pos_ref, [h, w, ch]).astype(np.uint8)
-            im_pos_ref = Image.fromarray(im_pos_ref)
+            im_pos = Image.fromarray(im_pos_ref)
         else:
             h5pypath = os.path.join(self.scene_root, scene_name, '{}.hdf5'.format(scene_name))
             with h5py.File(h5pypath, 'r') as hf:
