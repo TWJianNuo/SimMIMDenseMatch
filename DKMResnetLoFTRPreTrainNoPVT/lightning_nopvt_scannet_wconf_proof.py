@@ -148,9 +148,7 @@ def main(config):
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
         scannet_sampler = DistributedSampler(scannet, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
         scannet_sampler.set_epoch(int(epoch))
-        # data_loader_train_scannet = DataLoader(scannet, config.DATA.BATCH_SIZE, sampler=scannet_sampler, num_workers=config.DATA.NUM_WORKERS,
-        #                         pin_memory=True, drop_last=True, collate_fn=collate_fn)
-        data_loader_train_scannet = DataLoader(scannet, config.DATA.BATCH_SIZE, sampler=scannet_sampler, num_workers=8,
+        data_loader_train_scannet = DataLoader(scannet, config.DATA.BATCH_SIZE, sampler=scannet_sampler, num_workers=config.DATA.NUM_WORKERS,
                                 pin_memory=True, drop_last=True, collate_fn=collate_fn)
         data_loader_train_scannet = iter(data_loader_train_scannet)
 
@@ -288,6 +286,8 @@ if __name__ == '__main__':
     config.DATA.IMG_SIZE = (160, 192)  # 192
     config['DATA']['MASK_RATIO'] = 0.75
     config['DATA']['DATA_PATH_SCANNET'] = args.data_path_scannet
+    config['DATA']['DATA_PATH'] = args.data_path
+
     config['DATA']['MINOVERLAP_SCANNET'] = args.minoverlap_scannet
     config['MODEL']['SWIN']['PATCH_SIZE'] = 2
     config['MODEL']['VIT']['PATCH_SIZE'] = 2

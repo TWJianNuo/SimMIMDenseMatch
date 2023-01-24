@@ -1,4 +1,6 @@
-import os, io
+import os, glob, tqdm, sys, inspect, io, math, random, copy
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))))
+
 import os.path as osp
 import h5py
 import torch
@@ -14,7 +16,7 @@ from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.models.layers import to_2tuple
 
 class ScanNetScene:
-    def __init__(self, data_root, scene_info, transform, minoverlap=0.0, proof_of_concept=False) -> None:
+    def __init__(self, data_root, imagenet_root, scene_info, transform, minoverlap=0.0, proof_of_concept=False, image_paths=None) -> None:
         self.scene_root = osp.join(data_root, "scans")
         self.data_names = scene_info['name']
         self.overlaps = scene_info['score']
@@ -29,6 +31,9 @@ class ScanNetScene:
             self.overlaps = self.overlaps[pairinds]
         self.transform = transform
         self.proof_of_concept = proof_of_concept
+
+        self.image_paths = copy.deepcopy(image_paths)
+        self.imagenet_root = imagenet_root
 
     def load_im(self, im_ref, crop=None):
         im = Image.open(im_ref)
@@ -67,6 +72,25 @@ class ScanNetScene:
         intrinsic = np.loadtxt(path, delimiter=' ')
         return intrinsic[:-1, :-1]
 
+    def load_im_byidx(self, idx):
+        filename, hdf5path = self.image_paths[idx].split(' ')
+        hdf5path = os.path.join(self.imagenet_root, hdf5path)
+
+        with h5py.File(hdf5path, 'r') as hf:
+            # Load positive pair data
+            im_src_ref = io.BytesIO(np.array(hf[filename]))
+            im = Image.open(im_src_ref)
+
+        if np.array(im).ndim == 2:
+            im = np.array(im)
+            im = np.stack([im, im, im], axis=2)
+            im = Image.fromarray(im)
+
+        im = np.array(im)[:, :, 0:3]
+        im = Image.fromarray(im)
+
+        return im
+
     def __getitem__(self, pair_idx):
         # read intrinsics of original size
 
@@ -86,14 +110,8 @@ class ScanNetScene:
             im_src = self.load_im(im_src_ref)
 
         if self.proof_of_concept:
-            pair_idx_ = np.random.randint(0, self.__len__())
-            data_name = self.data_names[pair_idx_]
-            scene_name, scene_sub_name, stem_name_1, stem_name_2 = data_name
-            scene_name = f'scene{scene_name:04d}_{scene_sub_name:02d}'
-            h, w, ch = np.array(im_src).shape
-            im_pos_ref = np.random.randint(0, 255, h*w*ch)
-            im_pos_ref = np.reshape(im_pos_ref, [h, w, ch]).astype(np.uint8)
-            im_pos = Image.fromarray(im_pos_ref)
+            imagenetidx = np.random.randint(0, len(self.image_paths))
+            im_pos = self.load_im_byidx(imagenetidx)
         else:
             h5pypath = os.path.join(self.scene_root, scene_name, '{}.hdf5'.format(scene_name))
             with h5py.File(h5pypath, 'r') as hf:
@@ -111,7 +129,7 @@ class ScanNetScene:
         return img1, mask1, img2, mask2
 
 class ScanNetBuilder:
-    def __init__(self, data_root='data/scannet', debug=False, progress_bar=False, minoverlap=0.0, proof_of_concept=False) -> None:
+    def __init__(self, data_root='data/scannet', imagenet_root=None, debug=False, progress_bar=False, minoverlap=0.0, proof_of_concept=False) -> None:
         self.data_root = data_root
         self.scene_info_root = os.path.join(data_root, 'scannet_indices')
         self.all_scenes = os.listdir(self.scene_info_root)
@@ -119,6 +137,12 @@ class ScanNetBuilder:
         self.progress_bar = progress_bar
         self.minoverlap = minoverlap
         self.proof_of_concept = proof_of_concept
+        self.imagenet_root = imagenet_root
+
+        filename = os.path.join(project_root, 'splits', 'imagenet.txt')
+        with open(filename) as file:
+            lines = [line.rstrip() for line in file]
+        self.image_paths = lines
 
     def build_scenes(self, split='train', transform=None):
         # Note: split doesn't matter here as we always use same scannet_train scenes
@@ -130,7 +154,7 @@ class ScanNetBuilder:
         scenes = []
         for scene_name in tqdm(scene_names, disable=not self.progress_bar):
             scene_info = np.load(os.path.join(self.scene_info_root, scene_name), allow_pickle=True)
-            scenes.append(ScanNetScene(self.data_root, scene_info, transform=transform, minoverlap=self.minoverlap, proof_of_concept=self.proof_of_concept))
+            scenes.append(ScanNetScene(self.data_root, self.imagenet_root, scene_info, transform=transform, minoverlap=self.minoverlap, proof_of_concept=self.proof_of_concept, image_paths=self.image_paths))
         return scenes
 
     def weight_scenes(self, concat_dataset, alpha=.5):
@@ -234,8 +258,8 @@ def build_loader_scannet(config, logger=None):
 
     # scannet = ScanNetBuilder(data_root=config.DATA.DATA_PATH_SCANNET, progress_bar=False,
     #                          minoverlap=config.DATA.MINOVERLAP_SCANNET, debug=False, proof_of_concept=config.DATA.PROOF_OF_CONCEPT)
-    scannet = ScanNetBuilder(data_root=config.DATA.DATA_PATH_SCANNET, progress_bar=False,
-                             minoverlap=config.DATA.MINOVERLAP_SCANNET, debug=False, proof_of_concept=True)
+    scannet = ScanNetBuilder(data_root=config.DATA.DATA_PATH_SCANNET, imagenet_root=config.DATA.DATA_PATH, progress_bar=False,
+                             minoverlap=config.DATA.MINOVERLAP_SCANNET, debug=True, proof_of_concept=True)
     scannet_train = scannet.build_scenes(split="train", transform=transform)
     scannet_train = ConcatDataset(scannet_train)
 
