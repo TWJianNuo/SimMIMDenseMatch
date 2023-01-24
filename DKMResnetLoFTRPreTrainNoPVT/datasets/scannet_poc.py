@@ -90,12 +90,16 @@ class ScanNetScene:
             data_name = self.data_names[pair_idx_]
             scene_name, scene_sub_name, stem_name_1, stem_name_2 = data_name
             scene_name = f'scene{scene_name:04d}_{scene_sub_name:02d}'
-
-        h5pypath = os.path.join(self.scene_root, scene_name, '{}.hdf5'.format(scene_name))
-        with h5py.File(h5pypath, 'r') as hf:
-            # Load positive pair data
-            im_pos_ref = io.BytesIO(np.array(hf['color'][f'{stem_name_2}.jpg']))
-            im_pos = self.load_im(im_pos_ref)
+            h, w, ch = np.array(im_src).shape
+            im_pos_ref = np.random.randint(0, 255, h*w*ch)
+            im_pos_ref = np.reshape(im_pos_ref, [h, w, ch]).astype(np.uint8)
+            im_pos_ref = Image.fromarray(im_pos_ref)
+        else:
+            h5pypath = os.path.join(self.scene_root, scene_name, '{}.hdf5'.format(scene_name))
+            with h5py.File(h5pypath, 'r') as hf:
+                # Load positive pair data
+                im_pos_ref = io.BytesIO(np.array(hf['color'][f'{stem_name_2}.jpg']))
+                im_pos = self.load_im(im_pos_ref)
 
         img1 = im_src
         img2 = im_pos
