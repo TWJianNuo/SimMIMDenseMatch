@@ -123,3 +123,22 @@ class LoFTRWConf(nn.Module):
         loss = loss_pos_initial + loss_pos_refined * 0.25 + loss_neg * 0.05
 
         return loss, recon_initial, recon_final, reliability
+
+    def extrac_feature(self, img, img2):
+        # Change to Evaluation Mode for Batch Statistics
+        n, c, h, w = img.shape
+        mask = torch.zeros([n, int(h / 2), int(w / 2)], device=img.device)
+        feats_c = self.backbone(img, mask, maskedin=False)
+        feats_c1 = self.backbone(img2, mask, maskedin=False)
+
+        n, c, h, w = feats_c.shape
+
+        feats_c = rearrange(self.pos_encoding(feats_c), 'n c h w -> n (h w) c')
+        feats_c1 = rearrange(self.pos_encoding(feats_c1), 'n c h w -> n (h w) c')
+
+        feats_c, feats_c1 = self.loftr_coarse(feats_c, feats_c1, None, None, detach_left=False, detach_right=False)
+
+        feats_c = rearrange(feats_c, 'n (h w) c -> n c h w', h=h, w=w)
+        feats_c1 = rearrange(feats_c1, 'n (h w) c -> n c h w', h=h, w=w)
+
+        return feats_c, feats_c1

@@ -28,6 +28,7 @@ from timm.utils import AverageMeter
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 from DKMResnetLoFTRPreTrainNoPVT.models.build_model import DKMv2
+from DKMResnetLoFTRPreTrainNoPVT.models.build_modelwconf import DKMv2wconf
 from DKMResnetLoFTRPreTrainNoPVT.analyse.scannet_vls import build_loader_scannet
 
 def parse_option():
@@ -72,13 +73,17 @@ def parse_option():
 @torch.no_grad()
 def main(config):
     scannet = build_loader_scannet(config)
-    model = DKMv2()
+    model = DKMv2wconf()
     model.cuda()
 
     data_loader_train_scannet = DataLoader(scannet, 1, num_workers=0, pin_memory=True, drop_last=True, shuffle=False)
     data_loader_train_scannet = iter(data_loader_train_scannet)
 
-    ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblatePretrain/lightning_nopvt_scannet_pz4_p099_dm/ckpt_epoch_40.pth'
+    foldpath = '/media/shengjie/disk1/visualization/EMAwareFlow/pmim_ablate_overtrain'
+    os.makedirs(foldpath, exist_ok=True)
+
+    # ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblatePretrain/lightning_nopvt_scannet_pz4_p099_dm/ckpt_epoch_40.pth'
+    ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblatePretrain/lightning_nopvt_scannet_pz4_p099_dm_wconf_new_slayer/ckpt_epoch_20.pth'
     ckpt = torch.load(ckpt_path, map_location='cpu')
     incompactible = model.load_state_dict(ckpt['model'], strict=True)
     model.eval()
@@ -94,7 +99,7 @@ def main(config):
     for x in tqdm.tqdm(img_keys):
         img2_scannet = scannet_batch[x]
         img2_scannet = img2_scannet.cuda(non_blocking=True)
-        _, x_rec = model(img1_scannet, mask_scannet, img2_scannet)
+        _, x_rec_initial, x_rec, conf = model(img1_scannet, mask_scannet, img2_scannet)
 
         img1_vls = img1_scannet * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
             [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
@@ -102,19 +107,25 @@ def main(config):
         img2_vls = img2_scannet * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
             [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
             [1, 3, 1, 1]).cuda().float()
+        rec_initial_vls = x_rec_initial * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
+            [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
+            [1, 3, 1, 1]).cuda().float()
         rec_vls = x_rec * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
             [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
             [1, 3, 1, 1]).cuda().float()
+        conf_vls = tensor2disp(conf.float(), vmax=1, viewind=0)
 
         b, _, h, w = img1_scannet.shape
 
         vls1 = tensor2rgb(img1_vls)
         vls4 = tensor2rgb(img2_vls)
+        rec_initial_vls = tensor2rgb(rec_initial_vls)
         vls2 = tensor2rgb(rec_vls)
         vls3 = tensor2disp(F.interpolate(mask_scannet.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
-        vls = np.concatenate([vls1, vls4, vls2, vls3], axis=0)
+        conf_vls = conf_vls
+        vls = np.concatenate([vls1, vls4, rec_initial_vls, vls2, vls3, conf_vls], axis=0)
 
-        Image.fromarray(vls).save(os.path.join('/media/shengjie/disk1/visualization/EMAwareFlow/pmim_ablate', '{}.png'.format(str(x))))
+        Image.fromarray(vls).save(os.path.join(foldpath, '{}.png'.format(str(x))))
 
 
 if __name__ == '__main__':

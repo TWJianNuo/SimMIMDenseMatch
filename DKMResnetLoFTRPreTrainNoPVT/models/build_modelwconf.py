@@ -14,6 +14,9 @@ class Wrapper(torch.nn.Module):
     def forward(self, x, mask, x2=None, masksup=None):
         return self.loftr(x, mask, x2, masksup)
 
+    def extrac_feature(self, x, x2):
+        return self.loftr.extrac_feature(x, x2)
+
 def DKMv2wconf(uselinearattention=False):
     h, w = 384, 512
     # Init LoFTR

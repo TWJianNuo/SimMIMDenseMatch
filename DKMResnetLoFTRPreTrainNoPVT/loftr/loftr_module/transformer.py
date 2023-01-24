@@ -90,9 +90,6 @@ class LocalFeatureTransformer(nn.Module):
         self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(len(self.layer_names))])
         self._reset_parameters()
 
-        for layer, name in zip(self.layers, self.layer_names):
-            print(name)
-
     def _reset_parameters(self):
         for p in self.parameters():
             if p.dim() > 1:

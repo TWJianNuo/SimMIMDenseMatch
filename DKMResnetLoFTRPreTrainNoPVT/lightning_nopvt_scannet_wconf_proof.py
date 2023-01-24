@@ -6,24 +6,22 @@
 # Modified by Zhenda Xie
 # --------------------------------------------------------
 from __future__ import print_function, division
-import os, sys, inspect, time, tqdm, copy
+import os, sys, inspect, time, tqdm
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe()))))
 sys.path.insert(0, project_root)
 
-import logging
 import argparse
 import datetime
 import numpy as np
-import PIL.Image as Image
 
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 import torch.nn.functional as F
-import torch.multiprocessing as mp
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data._utils.collate import default_collate
+from torch.utils.data import DataLoader, DistributedSampler
 
 from config import get_config
 from logger import create_logger
@@ -35,11 +33,12 @@ from utils import load_checkpoint, save_checkpoint, get_grad_norm, auto_resume_h
 from timm.utils import AverageMeter
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
-from DKMResnetLoFTRPreTrainNoPVT.models.build_model import DKMv2
+from DKMResnetLoFTRPreTrainNoPVT.models.build_modelwconf import DKMv2wconf
 from DKMResnetLoFTRPreTrainNoPVT.datasets.scannet_poc import build_loader_scannet
 
 try:
     # noinspection PyUnresolvedReferences
+    import apex
     from apex import amp
 except ImportError:
     amp = None
@@ -69,10 +68,11 @@ def parse_option():
                         help='root of output folder, the full path is <output>/<model_name>/<tag> (default: output)')
     parser.add_argument('--tag', help='tag of experiment')
     parser.add_argument('--adjustscaler', type=float, default=1.0)
-    parser.add_argument('--mask-patch-size', type=int, default=32)
+    parser.add_argument('--uselinearattention', action='store_true')
+    parser.add_argument('--proof_of_concept', action='store_true')
 
-    parser.add_argument('--dist_url', type=str, help='url used to set up distributed training', default='tcp://127.0.0.1:1235')
-    parser.add_argument('--dist_backend', type=str, help='distributed backend', default='nccl')
+    parser.add_argument('--mask-patch-size', type=int, default=32)
+    parser.add_argument('--mask-ratio-scannet', type=float, default=0.85)
 
     # distributed training
     parser.add_argument("--local_rank", type=int, required=False, help='local rank for DistributedDataParallel')
@@ -83,37 +83,33 @@ def parse_option():
 
     return args, config
 
-def main(gpu, config, args):
-    torch.cuda.set_device(gpu)
-    dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url, world_size=args.world_size, rank=gpu)
+def collate_fn(batch):
+    if not isinstance(batch[0][0], tuple):
+        return default_collate(batch)
+    else:
+        batch_num = len(batch)
+        ret = []
+        for item_idx in range(len(batch[0][0])):
+            if batch[0][0][item_idx] is None:
+                ret.append(None)
+            else:
+                ret.append(default_collate([batch[i][0][item_idx] for i in range(batch_num)]))
+        ret.append(default_collate([batch[i][1] for i in range(batch_num)]))
+        return ret
 
-    logger = create_logger(output_dir=config.OUTPUT, dist_rank=0, name=f"{config.MODEL.NAME}")
-    if gpu != 0:
-        logger.setLevel(logging.ERROR)
-
-    path = os.path.join(config.OUTPUT, "config.json")
-    with open(path, "w") as f:
-        f.write(config.dump())
-    logger.info(f"Full config saved to {path}")
-
-    seed = config.SEED + dist.get_rank() + gpu
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    cudnn.benchmark = True
-
-    # print config
-    logger.info(config.dump())
-
+def main(config):
     scannet = build_loader_scannet(config, logger)
+    logger.info(f"The Length of ScanNet is %d {scannet.__len__()}")
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
-    model = DKMv2()
+    model = DKMv2wconf(uselinearattention=args.uselinearattention)
     model.cuda()
     logger.info(str(model))
 
     optimizer = build_optimizer(config, model, logger, is_pretrain=True)
     if config.AMP_OPT_LEVEL != "O0":
         model, optimizer = amp.initialize(model, optimizer, opt_level=config.AMP_OPT_LEVEL)
+        model = apex.parallel.convert_syncbn_model(model)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False)
     model_without_ddp = model.module
 
@@ -141,7 +137,7 @@ def main(gpu, config, args):
     if config.MODEL.RESUME:
         load_checkpoint(config, model_without_ddp, optimizer, lr_scheduler, logger)
 
-    if gpu == 0:
+    if config.LOCAL_RANK == 0:
         logger.info(f'Create Summary Writer')
         writer = SummaryWriter(config.OUTPUT, flush_secs=30)
     else:
@@ -150,46 +146,21 @@ def main(gpu, config, args):
     logger.info("Start training")
     start_time = time.time()
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
-        print("Start to Initialize New dataloader")
-        scannet_sampler = torch.utils.data.distributed.DistributedSampler(
-            copy.deepcopy(scannet), seed=epoch, shuffle=True, drop_last=True)
+        scannet_sampler = DistributedSampler(scannet, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
         scannet_sampler.set_epoch(int(epoch))
-        data_loader_train_scannet = torch.utils.data.DataLoader(
-            copy.deepcopy(scannet), batch_size=config.DATA.BATCH_SIZE,
-            sampler=scannet_sampler, num_workers=config.DATA.NUM_WORKERS,
-            pin_memory=True)
+        data_loader_train_scannet = DataLoader(scannet, config.DATA.BATCH_SIZE, sampler=scannet_sampler, num_workers=config.DATA.NUM_WORKERS,
+                                pin_memory=True, drop_last=True, collate_fn=collate_fn)
         data_loader_train_scannet = iter(data_loader_train_scannet)
 
-        train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer, logger)
-        if gpu == 0 and dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
+        train_one_epoch(config, model, None, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer)
+        if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
-        torch.cuda.synchronize()
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     logger.info('Training time {}'.format(total_time_str))
-    torch.cuda.synchronize()
 
-def on_after_backward(model, optimizer, logger):
-    valid_gradients = True
-    max_tensor = 0
-    for name, param in model.named_parameters():
-        if param.grad is not None:
-            valid_gradients = not (torch.isnan(param.grad).any() or torch.isinf(param.grad).any())
-            if not valid_gradients:
-                break
-        if max_tensor < param.data.abs().max():
-            max_tensor = param.data.abs().max()
-
-    if not valid_gradients:
-        logger.setLevel(logging.WARNING)
-        logger.warning(f'detected inf or nan values in gradients. not updating model parameters')
-        logger.setLevel(logging.ERROR)
-        optimizer.zero_grad()
-
-    return valid_gradients, max_tensor
-
-def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer, logger):
+def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, epoch, lr_scheduler, writer):
     model.train()
     optimizer.zero_grad()
 
@@ -201,69 +172,59 @@ def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, 
     start = time.time()
     end = time.time()
     for idx in range(num_steps):
-        scannet_batch = next(data_loader_train_scannet)
-        img1_scannet = scannet_batch['img1']
-        mask_scannet = scannet_batch['mask1']
-        img2_scannet = scannet_batch['img2']
+        scannet_batch = next(data_loader_scannet)
+
+        img1_scannet, mask_scannet, img2_scannet, _ = scannet_batch
 
         img1_scannet = img1_scannet.cuda(non_blocking=True)
         img2_scannet = img2_scannet.cuda(non_blocking=True)
         mask_scannet = mask_scannet.cuda(non_blocking=True)
 
-        loss, x_rec = model(img1_scannet, mask_scannet, img2_scannet, None)
-
-        assert torch.sum(torch.isnan(img1_scannet)) == 0
-        assert torch.sum(torch.isnan(img2_scannet)) == 0
-        assert torch.sum(torch.isnan(mask_scannet)) == 0
-        assert torch.sum(mask_scannet) > 0
+        loss, x_rec, x_rec_refined, reliability = model(img1_scannet, mask_scannet, img2_scannet)
 
         img = img1_scannet
-        img2 = img2_scannet
         mask = mask_scannet
-
-        optimizer.zero_grad()
-        loss.backward()
-        if config.TRAIN.CLIP_GRAD:
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.TRAIN.CLIP_GRAD)
-        else:
-            grad_norm = get_grad_norm(model.parameters())
-
-        valid_gradients, max_tensor = on_after_backward(model, optimizer, logger)
-        if not valid_gradients:
-            print("=============== NAN Detected, Saving ckpt for Debugging... ===============")
-            print("Max Img Value: %f, %f, %f" % (img.max().item(), img2.max().item(), torch.sum(mask).item()))
-
-            for p in model.parameters():
-                assert torch.sum(torch.isnan(p.data)) == 0
-                assert torch.sum(torch.isinf(p.data)) == 0
-
-            print("No nan Value in Model paramters found")
-
-            save_checkpoint(config, 99999999, model.module, 0., optimizer, lr_scheduler, logger)
-            import pickle
-            with open(os.path.join(config.OUTPUT, 'debug_input.pkl'), 'wb') as f:
-                pickle.dump({
-                    'img1_scannet': img1_scannet.cpu(),
-                    'img2_scannet': img2_scannet.cpu(),
-                    'mask_scannet': mask_scannet.cpu()}, f)
-            raise NotImplementedError()
-            # with open(os.path.join(config.OUTPUT, 'debug_input.pkl'), 'rb') as f:
-            #     debug_in = pickle.load(f)
-            #     img1_imagenetaug = debug_in['img1_imagenetaug']
-            #     img2_imagenetaug = debug_in['img2_imagenetaug']
-            #     mask_imagenetaug = debug_in['mask_imagenetaug']
-            #     mask_sup = debug_in['mask_sup']
-            #
-            # state_dict = torch.load('/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblateCoaseCorr/nopvt_imageaug_psz32/ckpt_epoch_99999999.pth')
-            # incompactible = model.module.load_state_dict(state_dict['model'], strict=True)
 
         if writer is not None:
             writer.add_scalar('loss', loss, num_steps * epoch + idx)
             writer.add_scalar('lr', optimizer.param_groups[0]['lr'], num_steps * epoch + idx)
-            writer.add_scalar('maxtensor', max_tensor, num_steps * epoch + idx)
 
-        optimizer.step()
-        lr_scheduler.step_update(epoch * num_steps + idx)
+        if config.TRAIN.ACCUMULATION_STEPS > 1:
+            loss = loss / config.TRAIN.ACCUMULATION_STEPS
+            if config.AMP_OPT_LEVEL != "O0":
+                with amp.scale_loss(loss, optimizer) as scaled_loss:
+                    scaled_loss.backward()
+                if config.TRAIN.CLIP_GRAD:
+                    grad_norm = torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), config.TRAIN.CLIP_GRAD)
+                else:
+                    grad_norm = get_grad_norm(amp.master_params(optimizer))
+            else:
+                loss.backward()
+                if config.TRAIN.CLIP_GRAD:
+                    grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.TRAIN.CLIP_GRAD)
+                else:
+                    grad_norm = get_grad_norm(model.parameters())
+            if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0:
+                optimizer.step()
+                optimizer.zero_grad()
+                lr_scheduler.step_update(epoch * num_steps + idx)
+        else:
+            optimizer.zero_grad()
+            if config.AMP_OPT_LEVEL != "O0":
+                with amp.scale_loss(loss, optimizer) as scaled_loss:
+                    scaled_loss.backward()
+                if config.TRAIN.CLIP_GRAD:
+                    grad_norm = torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), config.TRAIN.CLIP_GRAD)
+                else:
+                    grad_norm = get_grad_norm(amp.master_params(optimizer))
+            else:
+                loss.backward()
+                if config.TRAIN.CLIP_GRAD:
+                    grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.TRAIN.CLIP_GRAD)
+                else:
+                    grad_norm = get_grad_norm(model.parameters())
+            optimizer.step()
+            lr_scheduler.step_update(epoch * num_steps + idx)
 
         torch.cuda.synchronize()
 
@@ -282,27 +243,32 @@ def train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, 
                 f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
                 f'loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
                 f'grad_norm {norm_meter.val:.4f} ({norm_meter.avg:.4f})\t'
-                f'mem {memory_used:.0f}MB\t'
-                f'maxparam {max_tensor.item():.2f}')
+                f'mem {memory_used:.0f}MB')
 
         if (idx % config.PRINT_FREQ == 0) and (writer is not None):
             img_vls = img * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
                 [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
                 [1, 3, 1, 1]).cuda().float()
+            img2_vls = img2_scannet * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
+                [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
+                [1, 3, 1, 1]).cuda().float()
+
             rec_vls = x_rec * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
                 [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
                 [1, 3, 1, 1]).cuda().float()
-            img2_vls = img2 * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
+            rec_vls_refined = x_rec_refined * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
                 [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
                 [1, 3, 1, 1]).cuda().float()
 
             b, _, h, w = img.shape
 
             vls1 = tensor2rgb(img_vls)
-            vls2 = tensor2rgb(img2_vls)
-            vls3 = tensor2rgb(rec_vls)
-            vls4 = tensor2disp(F.interpolate(mask.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
-            vls = np.concatenate([vls1, vls2, vls3, vls4], axis=0)
+            vls4 = tensor2rgb(img2_vls)
+            vls2 = tensor2rgb(rec_vls)
+            vls5 = tensor2rgb(rec_vls_refined)
+            vls3 = tensor2disp(F.interpolate(mask.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
+            vls6 = tensor2disp(reliability, vmax=1, viewind=0)
+            vls = np.concatenate([vls1, vls4, vls2, vls5, vls6, vls3], axis=0)
 
             writer.add_image('visualization', (torch.from_numpy(vls).float() / 255).permute([2, 0, 1]), num_steps * epoch + idx)
 
@@ -318,19 +284,40 @@ if __name__ == '__main__':
 
     config.defrost()
     config.DATA.IMG_SIZE = (160, 192)  # 192
-    config['DATA']['MASK_RATIO_SCANNET'] = 0.9
-    config['MODEL']['SWIN']['PATCH_SIZE'] = 2
-    config['MODEL']['VIT']['PATCH_SIZE'] = 2
-    config['DATA']['MASK_PATCH_SIZE'] = args.mask_patch_size
+    config['DATA']['MASK_RATIO'] = 0.75
     config['DATA']['DATA_PATH_SCANNET'] = args.data_path_scannet
     config['DATA']['MINOVERLAP_SCANNET'] = args.minoverlap_scannet
+    config['MODEL']['SWIN']['PATCH_SIZE'] = 2
+    config['MODEL']['VIT']['PATCH_SIZE'] = 2
+
+    config['DATA']['MASK_RATIO_SCANNET'] = args.mask_ratio_scannet
+    config['DATA']['MASK_PATCH_SIZE'] = args.mask_patch_size
+    config['DATA']['PROOF_OF_CONCEPT'] = args.proof_of_concept
+
     config.freeze()
 
-    # linear scale the learning rate according to total batch size, may not be optimal
-    linear_scaled_lr = config.TRAIN.BASE_LR * 2 * args.adjustscaler
-    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * 2 * args.adjustscaler
-    linear_scaled_min_lr = config.TRAIN.MIN_LR * 2 * args.adjustscaler
+    if config.AMP_OPT_LEVEL != "O0":
+        assert amp is not None, "amp not installed!"
 
+    if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+        rank = int(os.environ["RANK"])
+        world_size = int(os.environ['WORLD_SIZE'])
+        print(f"RANK and WORLD_SIZE in environ: {rank}/{world_size}")
+    else:
+        rank = -1
+        world_size = -1
+    torch.cuda.set_device(config.LOCAL_RANK)
+    torch.distributed.init_process_group(backend='nccl', init_method='env://', world_size=world_size, rank=rank)
+    torch.distributed.barrier()
+
+    seed = config.SEED + dist.get_rank()
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    cudnn.benchmark = True
+
+    linear_scaled_lr = config.TRAIN.BASE_LR * 2
+    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * 2
+    linear_scaled_min_lr = config.TRAIN.MIN_LR * 2
     # gradient accumulation also need to scale the learning rate
     if config.TRAIN.ACCUMULATION_STEPS > 1:
         linear_scaled_lr = linear_scaled_lr * config.TRAIN.ACCUMULATION_STEPS
@@ -343,6 +330,15 @@ if __name__ == '__main__':
     config.freeze()
 
     os.makedirs(config.OUTPUT, exist_ok=True)
-    args.world_size = torch.cuda.device_count()
-    args.dist_url = args.dist_url.rstrip('1235') + str(np.random.randint(2000, 3000, 1).item())
-    mp.spawn(main, nprocs=args.world_size, args=(config, args, ))
+    logger = create_logger(output_dir=config.OUTPUT, dist_rank=dist.get_rank(), name=f"{config.MODEL.NAME}")
+
+    if dist.get_rank() == 0:
+        path = os.path.join(config.OUTPUT, "config.json")
+        with open(path, "w") as f:
+            f.write(config.dump())
+        logger.info(f"Full config saved to {path}")
+
+    # print config
+    logger.info(config.dump())
+
+    main(config)
