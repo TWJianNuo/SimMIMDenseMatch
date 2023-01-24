@@ -148,7 +148,9 @@ def main(config):
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
         scannet_sampler = DistributedSampler(scannet, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
         scannet_sampler.set_epoch(int(epoch))
-        data_loader_train_scannet = DataLoader(scannet, config.DATA.BATCH_SIZE, sampler=scannet_sampler, num_workers=config.DATA.NUM_WORKERS,
+        # data_loader_train_scannet = DataLoader(scannet, config.DATA.BATCH_SIZE, sampler=scannet_sampler, num_workers=config.DATA.NUM_WORKERS,
+        #                         pin_memory=True, drop_last=True, collate_fn=collate_fn)
+        data_loader_train_scannet = DataLoader(scannet, config.DATA.BATCH_SIZE, sampler=scannet_sampler, num_workers=8,
                                 pin_memory=True, drop_last=True, collate_fn=collate_fn)
         data_loader_train_scannet = iter(data_loader_train_scannet)
 
