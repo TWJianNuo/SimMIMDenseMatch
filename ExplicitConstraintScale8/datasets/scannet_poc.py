@@ -1,4 +1,6 @@
-import os, io
+import os, glob, tqdm, sys, inspect, io, math, random, copy
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))))
+
 import os.path as osp
 import h5py
 import torch
@@ -14,7 +16,7 @@ from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.models.layers import to_2tuple
 
 class ScanNetScene:
-    def __init__(self, data_root, scene_info, transform, minoverlap=0.0) -> None:
+    def __init__(self, data_root, imagenet_root, scene_info, transform, minoverlap=0.0, proof_of_concept=False, image_paths=None) -> None:
         self.scene_root = osp.join(data_root, "scans")
         self.data_names = scene_info['name']
         self.overlaps = scene_info['score']
@@ -28,6 +30,10 @@ class ScanNetScene:
             self.data_names = self.data_names[pairinds]
             self.overlaps = self.overlaps[pairinds]
         self.transform = transform
+        self.proof_of_concept = proof_of_concept
+
+        self.image_paths = copy.deepcopy(image_paths)
+        self.imagenet_root = imagenet_root
 
     def load_im(self, im_ref, crop=None):
         im = Image.open(im_ref)
@@ -66,6 +72,25 @@ class ScanNetScene:
         intrinsic = np.loadtxt(path, delimiter=' ')
         return intrinsic[:-1, :-1]
 
+    def load_im_byidx(self, idx):
+        filename, hdf5path = self.image_paths[idx].split(' ')
+        hdf5path = os.path.join(self.imagenet_root, hdf5path)
+
+        with h5py.File(hdf5path, 'r') as hf:
+            # Load positive pair data
+            im_src_ref = io.BytesIO(np.array(hf[filename]))
+            im = Image.open(im_src_ref)
+
+        if np.array(im).ndim == 2:
+            im = np.array(im)
+            im = np.stack([im, im, im], axis=2)
+            im = Image.fromarray(im)
+
+        im = np.array(im)[:, :, 0:3]
+        im = Image.fromarray(im)
+
+        return im
+
     def __getitem__(self, pair_idx):
         # read intrinsics of original size
 
@@ -73,30 +98,71 @@ class ScanNetScene:
             print("Scannet PairIdx Larger Than max Length")
         assert pair_idx < len(self.data_names)
 
-        # data_name = self.data_names[pair_idx]
-        scene_name, scene_sub_name, stem_name_1, stem_name_2 = 653, 1, 700, 760
-        # scene_name, scene_sub_name, stem_name_1, stem_name_2 = data_name
+        data_name = self.data_names[pair_idx]
+        scene_name, scene_sub_name, stem_name_1, stem_name_2 = data_name
         scene_name = f'scene{scene_name:04d}_{scene_sub_name:02d}'
+
         h5pypath = os.path.join(self.scene_root, scene_name, '{}.hdf5'.format(scene_name))
-
-        ims = list()
+        # print(h5pypath)
         with h5py.File(h5pypath, 'r') as hf:
-            for time in range(0, 500, 10):
+            # Load positive pair data
+            im_src_ref = io.BytesIO(np.array(hf['color'][f'{stem_name_1}.jpg']))
+            im_src = self.load_im(im_src_ref)
+
+        if self.proof_of_concept:
+            imagenetidx = np.random.randint(0, len(self.image_paths))
+            im_pos = self.load_im_byidx(imagenetidx)
+        else:
+            h5pypath = os.path.join(self.scene_root, scene_name, '{}.hdf5'.format(scene_name))
+            with h5py.File(h5pypath, 'r') as hf:
                 # Load positive pair data
-                try:
-                    im = io.BytesIO(np.array(hf['color'][f'{stem_name_1 + time}.jpg']))
-                    im = self.load_im(im)
-                    ims.append(im)
-                except:
-                    break
+                im_pos_ref = io.BytesIO(np.array(hf['color'][f'{stem_name_2}.jpg']))
+                im_pos = self.load_im(im_pos_ref)
 
-        data = dict()
-        for idx, im in enumerate(ims):
-            im, mask = self.transform(im)
-            data[idx] = im
+        img1 = im_src
+        img2 = im_pos
 
-        data['mask'] = mask
-        return data
+        img1, mask1 = self.transform(img1)
+        img2, mask2 = self.transform(img2)
+
+        # return {'img1': img1, 'mask1': mask1, 'img2': img2, 'mask2': mask2}
+        return img1, mask1, img2, mask2
+
+class ScanNetBuilder:
+    def __init__(self, data_root='data/scannet', imagenet_root=None, debug=False, progress_bar=False, minoverlap=0.0, proof_of_concept=False) -> None:
+        self.data_root = data_root
+        self.scene_info_root = os.path.join(data_root, 'scannet_indices')
+        self.all_scenes = os.listdir(self.scene_info_root)
+        self.debug = debug
+        self.progress_bar = progress_bar
+        self.minoverlap = minoverlap
+        self.proof_of_concept = proof_of_concept
+        self.imagenet_root = imagenet_root
+
+        filename = os.path.join(project_root, 'splits', 'imagenet.txt')
+        with open(filename) as file:
+            lines = [line.rstrip() for line in file]
+        self.image_paths = lines
+
+    def build_scenes(self, split='train', transform=None):
+        # Note: split doesn't matter here as we always use same scannet_train scenes
+        scene_names = self.all_scenes
+
+        if self.debug:
+            scene_names = scene_names[0:100]
+
+        scenes = []
+        for scene_name in tqdm(scene_names, disable=not self.progress_bar):
+            scene_info = np.load(os.path.join(self.scene_info_root, scene_name), allow_pickle=True)
+            scenes.append(ScanNetScene(self.data_root, self.imagenet_root, scene_info, transform=transform, minoverlap=self.minoverlap, proof_of_concept=self.proof_of_concept, image_paths=self.image_paths))
+        return scenes
+
+    def weight_scenes(self, concat_dataset, alpha=.5):
+        ns = []
+        for d in concat_dataset.datasets:
+            ns.append(len(d))
+        ws = torch.cat([torch.ones(n) / n ** alpha for n in ns])
+        return ws
 
 class MaskGenerator:
     def __init__(self, input_size=192, mask_patch_size=32, model_patch_size=4, mask_ratio=0.6):
@@ -174,10 +240,8 @@ class SimMIMTransform:
     def __call__(self, img, idx=None, validmask=None):
         transform_img = T.Compose([
             T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
-            # T.RandomResizedCrop(self.config.DATA.IMG_SIZE, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.)),
-            # T.RandomResizedCrop(self.config.DATA.IMG_SIZE),
-            T.Resize(self.config.DATA.IMG_SIZE),
-            # T.RandomHorizontalFlip(),
+            T.RandomResizedCrop(self.config.DATA.IMG_SIZE, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.)),
+            T.RandomHorizontalFlip(),
             T.ToTensor(),
             T.Normalize(mean=torch.tensor(IMAGENET_DEFAULT_MEAN), std=torch.tensor(IMAGENET_DEFAULT_STD)),
         ])
@@ -187,10 +251,20 @@ class SimMIMTransform:
 
         return img, mask
 
-def build_loader_scannet(config):
+def build_loader_scannet(config, logger=None):
     transform = SimMIMTransform(config)
-    all_scenes = os.listdir(os.path.join(config.DATA.DATA_PATH_SCANNET, 'scannet_indices'))
-    scene_name = all_scenes[100]
-    scene_info = np.load(os.path.join(os.path.join(config.DATA.DATA_PATH_SCANNET, 'scannet_indices'), scene_name), allow_pickle=True)
-    scene_train = ScanNetScene(data_root=config.DATA.DATA_PATH_SCANNET, scene_info=scene_info, transform=transform, minoverlap=0.3)
-    return scene_train
+    if logger is not None:
+        logger.info(f'Pre-train data transform:\n{transform}')
+
+    # scannet = ScanNetBuilder(data_root=config.DATA.DATA_PATH_SCANNET, progress_bar=False,
+    #                          minoverlap=config.DATA.MINOVERLAP_SCANNET, debug=False, proof_of_concept=config.DATA.PROOF_OF_CONCEPT)
+    scannet = ScanNetBuilder(data_root=config.DATA.DATA_PATH_SCANNET, imagenet_root=config.DATA.DATA_PATH, progress_bar=False,
+                             minoverlap=config.DATA.MINOVERLAP_SCANNET, debug=True, proof_of_concept=True)
+    scannet_train = scannet.build_scenes(split="train", transform=transform)
+    scannet_train = ConcatDataset(scannet_train)
+
+    if logger is not None:
+        logger.info(f'Build dataset: train images = {len(scannet_train)}')
+        logger.info(f'MIN OVERLAP = {config.DATA.MINOVERLAP_SCANNET}')
+
+    return scannet_train

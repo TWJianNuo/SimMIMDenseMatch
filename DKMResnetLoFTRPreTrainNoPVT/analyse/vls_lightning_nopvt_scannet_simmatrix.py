@@ -188,13 +188,15 @@ def main(config):
     gptemperature = 0.2
 
     scannet = build_loader_scannet(config)
-    model = DKMv2wconf()
+    # model = DKMv2wconf()
+    model = DKMv2()
     model.cuda()
 
-    data_loader_train_scannet = DataLoader(scannet, 1, num_workers=0, pin_memory=True, drop_last=True, shuffle=True)
+    data_loader_train_scannet = DataLoader(scannet, 1, num_workers=0, pin_memory=True, drop_last=True, shuffle=False)
     data_loader_train_scannet = iter(data_loader_train_scannet)
 
-    ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblatePretrain/lightning_nopvt_scannet_pz4_p099_dm_wconf_new_slayer/ckpt_epoch_20.pth'
+    ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblatePretrain/lightning_nopvt_scannet_pz4_p099_dm/ckpt_epoch_99.pth'
+    # ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblatePretrain/lightning_nopvt_scannet_pz4_p099_dm_wconf_new_slayer/ckpt_epoch_75.pth'
     ckpt = torch.load(ckpt_path, map_location='cpu')
     incompactible = model.load_state_dict(ckpt['model'], strict=True)
     model.eval()
@@ -206,10 +208,12 @@ def main(config):
     img1_scannet = scannet_batch[0]
     img1_scannet = img1_scannet.cuda(non_blocking=True)
 
-    vls_fold_root = '/media/shengjie/disk1/visualization/EMAwareFlow/pmim_ablate_confvls_single'
+    # vls_fold_root = '/media/shengjie/disk1/visualization/EMAwareFlow/pmim_ablate_confvls_single'
+    vls_fold_root = '/media/shengjie/disk1/visualization/EMAwareFlow/pmim_ablate_confvls'
     os.makedirs(vls_fold_root, exist_ok=True)
 
     img_keys = list(scannet_batch.keys())[0:-1]
+    img_keys = img_keys[0:5]
     for x in tqdm.tqdm(img_keys):
         img2_scannet = scannet_batch[x]
         img2_scannet = img2_scannet.cuda(non_blocking=True)
@@ -234,7 +238,7 @@ def main(config):
         os.makedirs(vls_fold, exist_ok=True)
 
         Image.fromarray(vls).save(os.path.join(vls_fold, 'overview.jpg'))
-        for _ in range(30):
+        for _ in range(50):
             # Random Visualziation of the Confidence Matrix
             combined = vls_conf(vls1, vls4, feat_src, feat_sup, temperature=temperature, seed=_)
             gpcombined = vls_gpconf(vls1, vls4, feat_src, feat_sup, temperature=gptemperature, seed=_)

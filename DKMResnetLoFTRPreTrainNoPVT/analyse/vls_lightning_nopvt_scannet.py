@@ -82,8 +82,8 @@ def main(config):
     foldpath = '/media/shengjie/disk1/visualization/EMAwareFlow/pmim_ablate_overtrain'
     os.makedirs(foldpath, exist_ok=True)
 
-    # ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblatePretrain/lightning_nopvt_scannet_pz4_p099_dm/ckpt_epoch_40.pth'
-    ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblatePretrain/lightning_nopvt_scannet_pz4_p099_dm_wconf_new_slayer/ckpt_epoch_20.pth'
+    # ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblatePretrain/lightning_nopvt_scannet_pz4_p099_dm/ckpt_epoch_99.pth'
+    ckpt_path = '/home/shengjie/Documents/MultiFlow/SimMIMDenseMatch/checkpoints/simmim_pretrain/AblatePretrain/lightning_nopvt_scannet_pz4_p099_dm_wconf_new_slayer/ckpt_epoch_75.pth'
     ckpt = torch.load(ckpt_path, map_location='cpu')
     incompactible = model.load_state_dict(ckpt['model'], strict=True)
     model.eval()
