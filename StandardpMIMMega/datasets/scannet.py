@@ -33,42 +33,11 @@ class ScanNetScene:
         im = Image.open(im_ref)
         return im
 
-    def load_depth(self, depth_ref, crop=None):
-        depth = Image.open(depth_ref)
-        depth = np.array(depth).astype(np.uint16)
-        depth = depth / 1000
-        depth = torch.from_numpy(depth).float()  # (h, w)
-        return depth
-
     def __len__(self):
         return len(self.data_names)
 
-    def scale_intrinsic(self, K, wi, hi):
-        sx, sy = self.wt / wi, self.ht / hi
-        sK = torch.tensor([[sx, 0, 0],
-                           [0, sy, 0],
-                           [0, 0, 1]])
-        return sK @ K
-
-    def read_scannet_pose(self, path):
-        """ Read ScanNet's Camera2World pose and transform it to World2Camera.
-
-        Returns:
-            pose_w2c (np.ndarray): (4, 4)
-        """
-        cam2world = np.loadtxt(path, delimiter=' ')
-        world2cam = np.linalg.inv(cam2world)
-        return world2cam
-
-    def read_scannet_intrinsic(self, path):
-        """ Read ScanNet's intrinsic matrix and return the 3x3 matrix.
-        """
-        intrinsic = np.loadtxt(path, delimiter=' ')
-        return intrinsic[:-1, :-1]
-
     def __getitem__(self, pair_idx):
         # read intrinsics of original size
-
         if pair_idx >= len(self.data_names):
             print("Scannet PairIdx Larger Than max Length")
         assert pair_idx < len(self.data_names)
@@ -93,7 +62,6 @@ class ScanNetScene:
         img1, mask1 = self.transform(img1)
         img2, mask2 = self.transform(img2)
 
-        # return {'img1': img1, 'mask1': mask1, 'img2': img2, 'mask2': mask2}
         return img1, mask1, img2, mask2
 
 class ScanNetBuilder:
@@ -145,32 +113,10 @@ class MaskGenerator:
 
         self.pixel_unshuffle = torch.nn.PixelUnshuffle(self.mask_patch_size)
 
-    def __call__(self, idx=None, validmask=None):
-        if idx is not None:
-            np.random.seed(idx)
-
+    def __call__(self):
         mask_idx = np.random.permutation(self.token_count)[:self.mask_count]
         mask = np.zeros(self.token_count, dtype=int)
         mask[mask_idx] = 1
-
-        if validmask is not None:
-            mask = mask.reshape((self.rand_size_h, self.rand_size_w))
-
-            validmask_patch = self.pixel_unshuffle(torch.from_numpy(validmask).unsqueeze(0).unsqueeze(0).float())
-            validmask_patch = torch.sum(validmask_patch, dim=[0, 1])
-            validmask_patch = validmask_patch > (self.mask_patch_size ** 2 * 0.3)
-            validmask_patch = validmask_patch.squeeze().numpy().astype(np.int64)
-
-            remain_selection = (validmask_patch * mask).flatten()
-            visible_valid_patch_num = np.sum((1 - mask) * validmask_patch)
-
-            mask = mask.flatten()
-            remain = 2 - visible_valid_patch_num # At least Two Patch Visible
-            if remain > 0:
-                rnd_idx = np.random.permutation(self.token_count)
-                remain_idx = rnd_idx[remain_selection[rnd_idx] == 1]
-                remain_idx = remain_idx[0:remain]
-                mask[remain_idx] = 0
 
         mask = mask.reshape((self.rand_size_h, self.rand_size_w))
         mask = mask.repeat(self.scale, axis=0).repeat(self.scale, axis=1)
@@ -180,25 +126,17 @@ class MaskGenerator:
 class SimMIMTransform:
     def __init__(self, config):
         self.config = copy.deepcopy(config)
-
-        if config.MODEL.TYPE == 'swin':
-            model_patch_size = config.MODEL.SWIN.PATCH_SIZE
-        elif config.MODEL.TYPE == 'vit':
-            model_patch_size = config.MODEL.VIT.PATCH_SIZE
-        elif config.MODEL.TYPE == 'pvt_small' or config.MODEL.TYPE == 'pvt_medium':
-            model_patch_size = 4
-        else:
-            raise NotImplementedError
+        model_patch_size = config.MODEL.VIT.PATCH_SIZE
 
         self.mask_generator = MaskGenerator(
             input_size=config.DATA.IMG_SIZE,
             mask_patch_size=config.DATA.MASK_PATCH_SIZE,
             model_patch_size=model_patch_size,
-            mask_ratio=config.DATA.MASK_RATIO_SCANNET,
+            mask_ratio=config.DATA.MASK_RATIO,
         )
-        logger.info("Mask Patch Size %d, ratio %f" % (config.DATA.MASK_PATCH_SIZE, config.DATA.MASK_RATIO_SCANNET))
+        logger.info("Mask Patch Size %d, ratio %f" % (config.DATA.MASK_PATCH_SIZE, config.DATA.MASK_RATIO))
 
-    def __call__(self, img, idx=None, validmask=None):
+    def __call__(self, img):
         transform_img = T.Compose([
             T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
             T.RandomResizedCrop(self.config.DATA.IMG_SIZE, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.)),
@@ -208,7 +146,7 @@ class SimMIMTransform:
         ])
 
         img = transform_img(img)
-        mask = self.mask_generator(idx, validmask)
+        mask = self.mask_generator()
 
         return img, mask
 
@@ -217,12 +155,12 @@ def build_loader_scannet(config, logger=None):
     if logger is not None:
         logger.info(f'Pre-train data transform:\n{transform}')
 
-    scannet = ScanNetBuilder(data_root=config.DATA.DATA_PATH_SCANNET, progress_bar=False, minoverlap=config.DATA.MINOVERLAP_SCANNET, debug=False)
+    scannet = ScanNetBuilder(data_root=config.DATA.DATA_PATH, progress_bar=False, minoverlap=config.DATA.MINOVERLAP, debug=False)
     scannet_train = scannet.build_scenes(split="train", transform=transform)
     scannet_train = ConcatDataset(scannet_train)
 
     if logger is not None:
         logger.info(f'Build dataset: train images = {len(scannet_train)}')
-        logger.info(f'MIN OVERLAP = {config.DATA.MINOVERLAP_SCANNET}')
+        logger.info(f'MIN OVERLAP = {config.DATA.MINOVERLAP}')
 
     return scannet_train
