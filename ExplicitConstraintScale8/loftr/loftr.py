@@ -96,9 +96,7 @@ class LoFTR(nn.Module):
         dense_flow = self.embedding_decoder(
             coordinate_context, rearrange(feats1, 'n (h w) c -> n c h w', h=h, w=w), key='8'
         )
-
-        with torch.no_grad():
-            feats2_aligned = F.grid_sample(rearrange(feats2, 'n (h w) c -> n c h w', h=h, w=w), dense_flow.permute(0, 2, 3, 1), align_corners=False)
+        feats2_aligned = F.grid_sample(rearrange(feats2, 'n (h w) c -> n c h w', h=h, w=w), dense_flow.permute(0, 2, 3, 1), align_corners=False)
 
         catted = torch.cat([feats1_mask__, feats2_aligned], dim=1)
         residual = self.out_refiner(catted)
