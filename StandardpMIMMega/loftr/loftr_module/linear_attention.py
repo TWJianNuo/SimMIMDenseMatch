@@ -61,7 +61,7 @@ class LinearAttention(Module):
         self.feature_map = elu_feature_map
         self.eps = eps
 
-    def forward(self, queries, keys, values, q_mask=None, kv_mask=None):
+    def forward(self, queries, keys, values, q_mask=None, kv_mask=None, detach_left=False, detach_right=False):
         """ Multi-Head linear attention proposed in "Transformers are RNNs"
         Args:
             queries: [N, L, H, D]
@@ -72,6 +72,14 @@ class LinearAttention(Module):
         Returns:
             queried_values: (N, L, H, D)
         """
+
+        if detach_left:
+            queries = queries.detach()
+
+        if detach_right:
+            keys = keys.detach()
+            values = values.detach()
+
         Q = self.feature_map(queries)
         K = self.feature_map(keys)
 
