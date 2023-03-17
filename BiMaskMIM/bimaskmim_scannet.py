@@ -241,7 +241,7 @@ def train_one_epoch(config, model, data_loader_scannet, optimizer, epoch, lr_sch
                 f'grad_norm {norm_meter.val:.4f} ({norm_meter.avg:.4f})\t'
                 f'mem {memory_used:.0f}MB')
 
-        if (idx % config.PRINT_FREQ == 0) and (writer is not None):
+        if (idx % int(config.PRINT_FREQ * 5) == 0) and (writer is not None):
             img1_vls = img1_scannet * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
                 [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
                 [1, 3, 1, 1]).cuda().float()
