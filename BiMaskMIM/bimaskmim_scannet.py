@@ -23,6 +23,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data._utils.collate import default_collate
 from torch.utils.data import DataLoader, DistributedSampler
 
+from pprint import pprint
 from config import get_config
 from logger import create_logger
 from optimizer import build_optimizer
@@ -33,8 +34,8 @@ from utils import load_checkpoint, save_checkpoint, get_grad_norm, auto_resume_h
 from timm.utils import AverageMeter
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
-from ExplicitConstraintScale8.models.build_model import DKMv2
-from ExplicitConstraintScale8.datasets.scannet import build_loader_scannet
+from BiMaskMIM.models.build_model import DKMv2
+from BiMaskMIM.datasets.scannet import build_loader_scannet
 
 try:
     # noinspection PyUnresolvedReferences
@@ -56,8 +57,6 @@ def parse_option():
     # easy config modification
     parser.add_argument('--batch-size', type=int, help="batch size for single GPU")
     parser.add_argument('--data-path', type=str, help='path to dataset')
-    parser.add_argument('--data-path-scannet', type=str, help='path to dataset scannet')
-    parser.add_argument('--minoverlap-scannet', type=float, default=0.0)
     parser.add_argument('--resume', help='resume from checkpoint')
     parser.add_argument('--accumulation-steps', type=int, help="gradient accumulation steps")
     parser.add_argument('--use-checkpoint', action='store_true',
@@ -71,7 +70,9 @@ def parse_option():
     parser.add_argument('--uselinearattention', action='store_true')
 
     parser.add_argument('--mask-patch-size', type=int, default=32)
-    parser.add_argument('--mask-ratio-scannet', type=float, default=0.85)
+    parser.add_argument('--mask-ratio-view1', type=float, default=0.75)
+    parser.add_argument('--mask-ratio-view2', type=float, default=0.25)
+    parser.add_argument('--minoverlap', type=float, default=0.5)
 
     # distributed training
     parser.add_argument("--local_rank", type=int, required=False, help='local rank for DistributedDataParallel')
@@ -97,13 +98,11 @@ def collate_fn(batch):
         return ret
 
 def main(config):
-    scannet = build_loader_scannet(config, logger)
+    scannet = build_loader_scannet(config)
     logger.info(f"The Length of ScanNet is %d {scannet.__len__()}")
 
-    logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     model = DKMv2(uselinearattention=args.uselinearattention)
     model.cuda()
-    logger.info(str(model))
 
     optimizer = build_optimizer(config, model, logger, is_pretrain=True)
     if config.AMP_OPT_LEVEL != "O0":
@@ -151,7 +150,7 @@ def main(config):
                                 pin_memory=True, drop_last=True, collate_fn=collate_fn)
         data_loader_train_scannet = iter(data_loader_train_scannet)
 
-        train_one_epoch(config, model, None, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer)
+        train_one_epoch(config, model, data_loader_train_scannet, optimizer, epoch, lr_scheduler, writer)
         if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, logger)
 
@@ -159,7 +158,7 @@ def main(config):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     logger.info('Training time {}'.format(total_time_str))
 
-def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, epoch, lr_scheduler, writer):
+def train_one_epoch(config, model, data_loader_scannet, optimizer, epoch, lr_scheduler, writer):
     model.train()
     optimizer.zero_grad()
 
@@ -173,16 +172,14 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
     for idx in range(num_steps):
         scannet_batch = next(data_loader_scannet)
 
-        img1_scannet, mask_scannet, img2_scannet, _ = scannet_batch
+        img1_scannet, mask1_scannet, img2_scannet, mask2_scannet = scannet_batch
 
         img1_scannet = img1_scannet.cuda(non_blocking=True)
         img2_scannet = img2_scannet.cuda(non_blocking=True)
-        mask_scannet = mask_scannet.cuda(non_blocking=True)
+        mask1_scannet = mask1_scannet.cuda(non_blocking=True)
+        mask2_scannet = mask2_scannet.cuda(non_blocking=True)
 
-        loss, x_rec, x_rec_refined, reliability = model(img1_scannet, mask_scannet, img2_scannet)
-
-        img = img1_scannet
-        mask = mask_scannet
+        loss, x_rec = model(img1_scannet, mask1_scannet, img2_scannet, mask2_scannet)
 
         if writer is not None:
             writer.add_scalar('loss', loss, num_steps * epoch + idx)
@@ -227,7 +224,7 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
 
         torch.cuda.synchronize()
 
-        loss_meter.update(loss.item(), img.size(0))
+        loss_meter.update(loss.item(), img1_scannet.size(0))
         norm_meter.update(grad_norm)
         batch_time.update(time.time() - end)
         end = time.time()
@@ -245,7 +242,7 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
                 f'mem {memory_used:.0f}MB')
 
         if (idx % config.PRINT_FREQ == 0) and (writer is not None):
-            img_vls = img * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
+            img1_vls = img1_scannet * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
                 [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
                 [1, 3, 1, 1]).cuda().float()
             img2_vls = img2_scannet * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
@@ -255,19 +252,15 @@ def train_one_epoch(config, model, data_loader, data_loader_scannet, optimizer, 
             rec_vls = x_rec * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
                 [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
                 [1, 3, 1, 1]).cuda().float()
-            rec_vls_refined = x_rec_refined * torch.from_numpy(np.array(IMAGENET_DEFAULT_STD)).view(
-                [1, 3, 1, 1]).cuda().float() + torch.from_numpy(np.array(IMAGENET_DEFAULT_MEAN)).view(
-                [1, 3, 1, 1]).cuda().float()
 
-            b, _, h, w = img.shape
+            b, _, h, w = img1_scannet.shape
 
-            vls1 = tensor2rgb(img_vls)
-            vls4 = tensor2rgb(img2_vls)
-            vls2 = tensor2rgb(rec_vls)
-            vls5 = tensor2rgb(rec_vls_refined)
-            vls3 = tensor2disp(F.interpolate(mask.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
-            vls6 = tensor2disp(reliability, vmax=1, viewind=0)
-            vls = np.concatenate([vls1, vls4, vls2, vls5, vls6, vls3], axis=0)
+            vls1 = tensor2rgb(img1_vls)
+            vls2 = tensor2rgb(img2_vls)
+            vls3 = tensor2rgb(rec_vls)
+            vls4 = tensor2disp(F.interpolate(mask1_scannet.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
+            vls5 = tensor2disp(F.interpolate(mask2_scannet.unsqueeze(1).float(), [h, w]), vmax=1, viewind=0)
+            vls = np.concatenate([vls1, vls2, vls3, vls4, vls5], axis=0)
 
             writer.add_image('visualization', (torch.from_numpy(vls).float() / 255).permute([2, 0, 1]), num_steps * epoch + idx)
 
@@ -283,15 +276,24 @@ if __name__ == '__main__':
 
     config.defrost()
     config.DATA.IMG_SIZE = (160, 192)  # 192
-    config['DATA']['MASK_RATIO'] = 0.75
-    config['DATA']['DATA_PATH_SCANNET'] = args.data_path_scannet
-    config['DATA']['MINOVERLAP_SCANNET'] = args.minoverlap_scannet
-    config['MODEL']['SWIN']['PATCH_SIZE'] = 2
-    config['MODEL']['VIT']['PATCH_SIZE'] = 2
 
-    config['DATA']['MASK_RATIO_SCANNET'] = args.mask_ratio_scannet
+    config['MODEL']['VIT']['PATCH_SIZE'] = 2
+    config['DATA']['DATA_PATH'] = args.data_path
+    config['DATA']['MASK_RATIO_VIEW1'] = args.mask_ratio_view1
+    config['DATA']['MASK_RATIO_VIEW2'] = args.mask_ratio_view2
     config['DATA']['MASK_PATCH_SIZE'] = args.mask_patch_size
+    config['DATA']['MINOVERLAP'] = args.minoverlap
     config.freeze()
+
+    config_dict = {
+        'PATCH_SIZE': 2,
+        'MASK_RATIO_VIEW1': args.mask_ratio_view1,
+        'MASK_RATIO_VIEW2': args.mask_ratio_view2,
+        'MASK_PATCH_SIZE': args.mask_patch_size,
+        'MINOVERLAP': args.minoverlap
+    }
+
+    pprint(config_dict)
 
     if config.AMP_OPT_LEVEL != "O0":
         assert amp is not None, "amp not installed!"

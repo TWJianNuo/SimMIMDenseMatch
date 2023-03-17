@@ -1,7 +1,7 @@
 import copy
 import torch
 import torch.nn as nn
-from .linear_attention import FullAttention
+from .linear_attention import FullAttention, LinearAttention
 from loguru import logger
 
 

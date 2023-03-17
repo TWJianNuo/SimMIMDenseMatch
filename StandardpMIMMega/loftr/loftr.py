@@ -33,7 +33,7 @@ class LoFTR(nn.Module):
 
         self.temperature = 0.1
 
-    def forward(self, img1, mask1, img2, masksup=None):
+    def forward(self, img1, mask1, img2):
         """
         Update:
             data (dict): {
